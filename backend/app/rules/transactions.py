@@ -30,7 +30,6 @@ def _correlate_group(events: list[VideoEvent], config: RuleConfig) -> Transactio
 def advance(transaction: Transaction, event: VideoEvent, config: RuleConfig) -> Transaction:
     ids = transaction.event_ids + ((event.id or f"{event.kind}:{event.start_ms}"),)
     status, reason = transaction.status, transaction.reason
-    kinds = set(transaction.event_ids)  # IDs are audit-only; state is inferred below from current transition.
     if event.kind in {EventKind.CASH_OCCLUDED, EventKind.CASH_LOST, EventKind.CAMERA_DEGRADED}:
         status, reason = TransactionStatus.INSUFFICIENT_OBSERVATION, "observation_interrupted"
     elif event.kind == EventKind.CASH_REMOVED_FROM_BASKET:
@@ -40,7 +39,12 @@ def advance(transaction: Transaction, event: VideoEvent, config: RuleConfig) -> 
             status, reason = TransactionStatus.CLOSED, "observed_valid_destination"
         else:
             status = TransactionStatus.PARTIALLY_MATCHED
-    # A synthetic time-advance event is represented by a zero-confidence event after an open removal.
-    elif event.confidence == 0 and status == TransactionStatus.OBSERVING and event.start_ms - transaction.opened_at_ms >= config.destination_window_ms:
-        status, reason = TransactionStatus.REVIEW_REQUIRED, "cash_removal_has_no_observed_destination"
     return transaction.model_copy(update={"status": status, "reason": reason, "updated_at_ms": event.end_ms, "event_ids": ids})
+
+
+def expire(transaction: Transaction, now_ms: int, config: RuleConfig) -> Transaction:
+    """Advance a still-observed, high-evidence removal only after its destination window."""
+    if transaction.status is TransactionStatus.OBSERVING and now_ms - transaction.opened_at_ms >= config.destination_window_ms:
+        return transaction.model_copy(update={"status": TransactionStatus.REVIEW_REQUIRED,
+            "reason": "cash_removal_has_no_observed_destination", "updated_at_ms": now_ms})
+    return transaction

@@ -1,5 +1,5 @@
-from app.rules.transactions import correlate
-from app.schemas import EventKind, TransactionStatus, VideoEvent
+from app.rules.transactions import correlate, expire
+from app.schemas import EventKind, RuleConfig, TransactionStatus, VideoEvent
 
 
 def event(kind, at=1_000, confidence=.95):
@@ -17,5 +17,5 @@ def test_occlusion_yields_insufficient_observation_not_review():
 
 
 def test_unresolved_confirmed_cash_removal_requires_review():
-    tx = correlate([event(EventKind.CASH_REMOVED_FROM_BASKET), event(EventKind.CAMERA_DEGRADED, 31_000, 0)])[0]
-    assert tx.status is TransactionStatus.INSUFFICIENT_OBSERVATION
+    tx = correlate([event(EventKind.CASH_REMOVED_FROM_BASKET)])[0]
+    assert expire(tx, 31_000, RuleConfig()).status is TransactionStatus.REVIEW_REQUIRED
