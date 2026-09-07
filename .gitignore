@@ -5,6 +5,7 @@ __pycache__/
 .env
 data/evidence/
 backend/data/live/
+backend/*.pt
 node_modules/
 dist/
 *.tsbuildinfo
