@@ -1,0 +1,15 @@
+:root { font-family: Inter, system-ui, sans-serif; color: #16251d; background: #f3f6f1; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+main { max-width: 980px; margin: 48px auto; padding: 28px; background: white; border-radius: 18px; box-shadow: 0 12px 35px #17241716; }
+h1, h2 { margin-top: 0; color: #123f2b; }
+button { display: block; width: 100%; text-align: left; padding: 16px; margin: 10px 0; border: 1px solid #d9e5dc; border-radius: 10px; background: #fff; color: #16251d; cursor: pointer; }
+button:hover { border-color: #27875c; background: #f4fbf6; }
+button:disabled { opacity: .6; cursor: wait; }
+section > div { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+figure { margin: 0; padding: 12px; background: #f5f8f5; border-radius: 10px; }
+figcaption { font-weight: 700; margin-bottom: 8px; }
+video { width: 100%; background: #16251d; border-radius: 6px; }
+ol { padding-left: 22px; }
+section > button { display: inline-block; width: auto; margin-right: 8px; color: white; background: #176b48; border-color: #176b48; }
+section > button:hover { background: #0f5235; }
