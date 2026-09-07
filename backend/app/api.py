@@ -12,15 +12,19 @@ from app.schemas import ReviewOutcome, TransactionStatus
 from app.services.cases import append_decision, list_review_cases
 from app.models import ReviewCase
 from app.video.live import LiveStreamManager
+from app.vision.runtime import PersonInferenceWorker
 
 live_manager = LiveStreamManager("./data/live", {"cam-a": "TRANSACTION_RTSP_CAM_A", "cam-b": "TRANSACTION_RTSP_CAM_B"})
+person_worker = PersonInferenceWorker("cam-a", "TRANSACTION_RTSP_CAM_A")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     create_all(get_settings().database_url)
     live_manager.start()
+    person_worker.start()
     yield
+    person_worker.stop()
     live_manager.stop()
 
 
@@ -57,3 +61,8 @@ def review_decision(case_id: str, payload: DecisionInput, session: Session = Dep
 @app.get("/api/live/status")
 def live_status():
     return live_manager.statuses()
+
+
+@app.get("/api/inference/status")
+def inference_status():
+    return {"cam-a": person_worker.snapshot()}
