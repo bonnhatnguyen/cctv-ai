@@ -33,8 +33,10 @@ class LiveStreamManager:
                 continue
             target = self.output_root / camera_id
             target.mkdir(parents=True, exist_ok=True)
+            # Camera streams frequently use H.265; transcode to browser-compatible H.264.
             stream.process = subprocess.Popen([ffmpeg, "-hide_banner", "-loglevel", "error", "-rtsp_transport", "tcp", "-i", url,
-                "-an", "-c:v", "copy", "-f", "hls", "-hls_time", "2", "-hls_list_size", "6", "-hls_flags", "delete_segments",
+                "-an", "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency", "-g", "50", "-sc_threshold", "0",
+                "-f", "hls", "-hls_time", "2", "-hls_list_size", "6", "-hls_flags", "delete_segments",
                 str(target / "index.m3u8")], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             stream.status = "starting"
 
