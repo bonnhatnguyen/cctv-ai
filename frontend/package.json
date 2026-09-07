@@ -3,6 +3,6 @@
   "private": true,
   "version": "0.1.0",
   "scripts": { "dev": "vite", "build": "tsc -b && vite build", "test": "vitest" },
-  "dependencies": { "@vitejs/plugin-react": "latest", "vite": "latest", "react": "latest", "react-dom": "latest" },
+  "dependencies": { "@vitejs/plugin-react": "latest", "hls.js": "latest", "vite": "latest", "react": "latest", "react-dom": "latest" },
   "devDependencies": { "@testing-library/jest-dom": "latest", "@testing-library/react": "latest", "@types/react": "latest", "@types/react-dom": "latest", "jsdom": "latest", "typescript": "latest", "vitest": "latest" }
 }

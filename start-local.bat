@@ -14,6 +14,8 @@ if exist "C:\Users\Admin\.cache\codex-runtimes\codex-primary-runtime\dependencie
 if exist "C:\Users\Admin\.cache\codex-runtimes\codex-primary-runtime\dependencies\bin\fallback\pnpm.cmd" set "PNPM_EXE=C:\Users\Admin\.cache\codex-runtimes\codex-primary-runtime\dependencies\bin\fallback\pnpm.cmd"
 
 :start_services
+for /f "tokens=2,*" %%A in ('reg query HKCU\Environment /v TRANSACTION_RTSP_CAM_A 2^>nul') do set "TRANSACTION_RTSP_CAM_A=%%B"
+for /f "tokens=2,*" %%A in ('reg query HKCU\Environment /v TRANSACTION_RTSP_CAM_B 2^>nul') do set "TRANSACTION_RTSP_CAM_B=%%B"
 echo Starting transaction review API at http://127.0.0.1:8000 ...
 start "Transaction API" /D "%ROOT%backend" cmd /k ""%PYTHON_EXE%" -m uvicorn app.api:app --host 127.0.0.1 --port 8000"
 echo Starting review web app at http://127.0.0.1:5173 ...
