@@ -1,0 +1,8 @@
+__pycache__/
+.pytest_cache/
+*.py[cod]
+*.db
+.env
+data/evidence/
+node_modules/
+dist/
