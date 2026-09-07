@@ -6,6 +6,7 @@ __pycache__/
 data/evidence/
 backend/data/live/
 backend/*.pt
+backend/weights/
 node_modules/
 dist/
 *.tsbuildinfo
