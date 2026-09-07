@@ -15,9 +15,9 @@ if exist "C:\Users\Admin\.cache\codex-runtimes\codex-primary-runtime\dependencie
 
 :start_services
 echo Starting transaction review API at http://127.0.0.1:8000 ...
-start "Transaction API" /D "%ROOT%backend" cmd /k "\"%PYTHON_EXE%\" -m uvicorn app.api:app --host 127.0.0.1 --port 8000"
+start "Transaction API" /D "%ROOT%backend" cmd /k ""%PYTHON_EXE%" -m uvicorn app.api:app --host 127.0.0.1 --port 8000"
 echo Starting review web app at http://127.0.0.1:5173 ...
-start "Transaction Review UI" /D "%ROOT%frontend" cmd /k "\"%PNPM_EXE%\" dev --host 127.0.0.1"
+start "Transaction Review UI" /D "%ROOT%frontend" cmd /k ""%PNPM_EXE%" dev --host 127.0.0.1"
 timeout /t 3 /nobreak >nul
 start "" "http://127.0.0.1:5173"
 endlocal
