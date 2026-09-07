@@ -1,7 +1,6 @@
 """Small deterministic per-camera tracker; replaceable by ByteTrack in production."""
 
 from collections import defaultdict
-from dataclasses import replace
 
 from app.schemas import Observation
 
@@ -26,7 +25,7 @@ class Tracker:
             else:
                 used.add(candidate_index)
                 track_id = previous[candidate_index].track_id
-            result.append(replace(observation, track_id=track_id))
+            result.append(observation.model_copy(update={"track_id": track_id}))
         self._previous[camera_id] = result
         return result
 
