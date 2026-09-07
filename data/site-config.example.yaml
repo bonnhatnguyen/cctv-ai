@@ -1,0 +1,18 @@
+site_timezone: Asia/Ho_Chi_Minh
+cameras:
+  - id: cam-a
+    rtsp_env_key: TRANSACTION_RTSP_CAM_A
+    timezone: Asia/Ho_Chi_Minh
+    rois:
+      cash_basket: [[0.40, 0.40], [0.55, 0.40], [0.55, 0.60], [0.40, 0.60]]
+      seller_area: [[0.10, 0.10], [0.60, 0.10], [0.60, 0.90], [0.10, 0.90]]
+      customer_area: [[0.60, 0.10], [0.95, 0.10], [0.95, 0.90], [0.60, 0.90]]
+      excluded_area: [[0.00, 0.00], [0.08, 0.00], [0.08, 1.00], [0.00, 1.00]]
+  - id: cam-b
+    rtsp_env_key: TRANSACTION_RTSP_CAM_B
+    timezone: Asia/Ho_Chi_Minh
+    rois:
+      cash_basket: [[0.35, 0.35], [0.55, 0.35], [0.55, 0.58], [0.35, 0.58]]
+      seller_area: [[0.05, 0.10], [0.55, 0.10], [0.55, 0.90], [0.05, 0.90]]
+      customer_area: [[0.55, 0.10], [0.95, 0.10], [0.95, 0.90], [0.55, 0.90]]
+      excluded_area: [[0.00, 0.00], [0.04, 0.00], [0.04, 1.00], [0.00, 1.00]]
