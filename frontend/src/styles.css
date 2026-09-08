@@ -9,7 +9,10 @@ button:disabled { opacity: .6; cursor: wait; }
 section > div { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
 figure { margin: 0; padding: 12px; background: #f5f8f5; border-radius: 10px; }
 figcaption { font-weight: 700; margin-bottom: 8px; }
+.video-wrap { position: relative; line-height: 0; }
 video { width: 100%; background: #16251d; border-radius: 6px; }
+.detection { position: absolute; border: 2px solid #32d583; pointer-events: none; line-height: 1; }
+.detection span { position: absolute; left: -2px; top: -22px; white-space: nowrap; padding: 3px 5px; border-radius: 3px; background: #087443; color: #fff; font-size: 11px; font-weight: 700; }
 ol { padding-left: 22px; }
 section > button { display: inline-block; width: auto; margin-right: 8px; color: white; background: #176b48; border-color: #176b48; }
 section > button:hover { background: #0f5235; }

@@ -20,6 +20,7 @@ class InferenceStatus:
     candidates: dict[str, int] | None = None
     event_kinds: list[str] | None = None
     transaction_statuses: list[str] | None = None
+    detections: list[dict] | None = None
 
 
 class PersonInferenceWorker:
@@ -54,7 +55,8 @@ class PersonInferenceWorker:
     def snapshot(self) -> dict:
         return {"state": self.status.state, "people_count": self.status.people_count, "updated_at_ms": self.status.updated_at_ms,
                 "candidates": self.status.candidates or {}, "event_kinds": self.status.event_kinds or [],
-                "transaction_statuses": self.status.transaction_statuses or [], "scope": "candidate_detection_only"}
+                "transaction_statuses": self.status.transaction_statuses or [], "detections": self.status.detections or [],
+                "scope": "candidate_detection_only"}
 
     def _run(self) -> None:
         try:
@@ -84,6 +86,8 @@ class PersonInferenceWorker:
                 self.status.updated_at_ms = int(time.time() * 1000)
                 observations = self._observations_from_result(result, names, frame.shape[1], frame.shape[0])
                 tracked = self._tracker.update(self.camera_id, observations)
+                self.status.detections = [{"track_id": item.track_id, "kind": item.kind, "confidence": round(item.confidence, 2),
+                    "bbox": item.bbox} for item in tracked if item.bbox]
                 self._observations.extend(tracked)
                 events = derive_events(tuple(self._observations), self._rules)
                 transactions = correlate(events, self._rules)
