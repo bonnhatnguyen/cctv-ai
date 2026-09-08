@@ -4,9 +4,9 @@
 
 Replace the current generic prompt-based detection pipeline with public,
 purpose-specific model adapters that show tracked people, whole-body/hand pose,
-and observable hand-motion sequences on one RTSP camera. A Vietnamese-banknote
-layer may enrich a sequence only when a legally usable local checkpoint is
-available. The system is an observation tool only: it must not create a
+a generic visible-banknote candidate, and observable hand-motion sequences on
+one RTSP camera. The banknote layer never identifies Vietnamese denominations.
+The system is an observation tool only: it must not create a
 transaction, shortage, theft, or review decision from this one camera.
 
 ## Constraints
@@ -16,7 +16,7 @@ transaction, shortage, theft, or review decision from this one camera.
 - RTSP credentials remain in environment variables and never appear in API
   responses, logs, UI, source control, or test fixtures.
 - Use existing public models or repositories only. Do not substitute a generic
-  prompt detector when the Vietnamese-banknote model is missing or fails.
+  prompt detector when the selected banknote-candidate model is missing or fails.
 - Use neutral Vietnamese UI language: `quan sát được`, `không đủ quan sát`,
   and `model chưa sẵn sàng`. Do not label a person or event as fraudulent.
 - A detector failure leaves its layer unavailable while other layers continue.
@@ -28,11 +28,12 @@ transaction, shortage, theft, or review decision from this one camera.
 | People and multi-object ID | Ultralytics YOLO tracking with ByteTrack | Run a COCO person model with `model.track(..., persist=True, tracker=...)`; expose its returned ID only after basic duplicate suppression. |
 | Whole-body and hands | OpenMMLab MMPose RTMPose whole-body model | Run pose inference per tracked person; retain wrist, elbow, hip, and hand keypoints with visibility scores. |
 | Action framework | OpenMMLab MMAction2 design and temporal-window conventions | Use its public, tested video-understanding structure as the adapter boundary, but implement only transparent movement rules because its public checkpoints are not trained for Vietnamese cashier actions. |
-| Vietnamese banknotes | Vietnamese Banknote YOLO11 model by bao-vu on Roboflow Universe | Treat this as an optional enrichment layer. It is unavailable until a local, licensed checkpoint and documented class map are obtained; do not call a hosted API or send frames externally without a later explicit approval. |
+| Visible banknote candidate | Rokyuto/BanknotesRecognition YOLO11 checkpoint on Hugging Face | Download and run the public local checkpoint; map every valid source class to the single internal label `banknote_candidate`, never to a denomination. It was trained on Bulgarian/Euro notes, so it must remain disabled unless the live-frame acceptance check passes. Preserve its AGPL-3.0 licensing notice in project documentation. |
 
 The current YOLO-World prompt path for `banknote`, `cash basket`, `goods`, and
-`human hand` is removed from the live runtime. A model trained for other
-countries' banknotes is not an eligible fallback.
+`human hand` is removed from the live runtime. No model is used as a fallback
+when the selected banknote-candidate checkpoint is unavailable or fails its
+live-frame acceptance check.
 
 ## Architecture
 
@@ -45,16 +46,16 @@ RTSP frame (cam-a)
     +-- Pose adapter: MMPose RTMPose whole-body model, per tracked person
     |       -> wrist / elbow / hip / hand keypoints with visibility scores
     |
-    +-- Optional VND banknote adapter: licensed local checkpoint only
-            -> Observation(kind="vnd_note", denomination=<published class>)
+    +-- Generic banknote adapter: public local YOLO11 checkpoint
+            -> Observation(kind="banknote_candidate", denomination=None)
              -> ByteTrack ID scoped to cam-a
     |
     v
 Temporal action observer (16-frame sliding window per person)
     -> `tay_huong_khach`
     -> `tay_vao_vung_tui`
-    -> `tien_di_cung_tay` only with a visible VND-note track
-    -> `tien_mat_dau_gan_vung_tui` only with a previously visible VND-note track
+    -> `tien_di_cung_tay` only with a visible banknote-candidate track
+    -> `tien_mat_dau_gan_vung_tui` only with a previously visible banknote-candidate track
     -> `khong_du_quan_sat` for occlusion, a missing pose, or missing note layer
     |
     v
@@ -80,9 +81,9 @@ the RTSP stream.
 
 - `person`: ready only if the official Ultralytics person model is available.
 - `pose`: ready only if the MMPose RTMPose whole-body checkpoint is available.
-- `vnd_note`: `model_unavailable` until a local Vietnamese-banknote model and
-  a checked-in, documented class map are available. The remaining layers still
-  run normally.
+- `banknote_candidate`: ready only if the public local YOLO11 checkpoint and
+  its source class map are available. Its internal output is one generic class
+  and it never returns a denomination. The remaining layers still run normally.
 
 The live status endpoint returns one state per layer: `ready`, `running`,
 `model_unavailable`, or `inference_failed`. The UI shows unavailable layers in
@@ -92,7 +93,7 @@ paths, RTSP URLs, tokens, or exception text.
 ## Tracking, Action, and Overlay Rules
 
 - Apply class-aware non-maximum suppression before any tracker update.
-- Person and VND-note tracks use independent ByteTrack instances. IDs are
+- Person and banknote-candidate tracks use independent ByteTrack instances. IDs are
   unique within a camera and class namespace.
 - Pose keypoints are associated to the person track whose box contains the
   pose centre. A keypoint below confidence 0.55 is treated as absent.
@@ -101,18 +102,17 @@ paths, RTSP URLs, tokens, or exception text.
 - A `tay_vao_vung_tui` observation requires a wrist approaching that person's
   hip region for eight valid frames. The UI calls this `tay vào vùng túi`, not
   `đút tiền vào túi`.
-- A `tien_di_cung_tay` observation requires the centre of a visible VND note
+- A `tien_di_cung_tay` observation requires the centre of a visible banknote
   to remain within the wrist neighbourhood for eight valid frames.
 - A `tien_mat_dau_gan_vung_tui` observation requires `tien_di_cung_tay`, then
-  a lost VND-note track while the wrist remains in the hip region. Its UI label
+  a lost banknote-candidate track while the wrist remains in the hip region. Its UI label
   is `tiền không còn quan sát gần vùng túi`, never `đút túi`.
-- If a person, wrist, or VND note is hidden, the temporal observer emits
+- If a person, wrist, or banknote candidate is hidden, the temporal observer emits
   `khong_du_quan_sat` and clears the partial sequence.
 - The overlay reads the detection history nearest to the active HLS delay.
 - Labels are exactly `khách`, `tay hướng khách`, `tay vào vùng túi`, `tiền đi
   cùng tay`, `tiền không còn quan sát gần vùng túi`, `không đủ quan sát`, or
-  `tiền <mệnh giá>` when the published class map contains a denomination. An
-  unknown class is discarded.
+  `tiền quan sát được`. An unknown source class is discarded.
 - The UI includes layer health, current counts, confidence, stable track IDs,
   and an action timeline. It does not show `cash basket`, `goods`, transaction
   chains, or review queue states in this redesign.
@@ -129,8 +129,8 @@ paths, RTSP URLs, tokens, or exception text.
    the delayed-overlay history with neutral labels.
 5. The live status response never contains a transaction status or a
    review-required result for a one-camera setup.
-6. Before enabling the VND layer in the UI, an operator checks at least ten
-   live frames containing clear VND notes. If the model does not detect them,
+6. Before enabling the banknote-candidate layer in the UI, an operator checks
+   at least ten live frames containing clear notes. If the model does not detect them,
    its layer remains marked `inference_failed`; no generic fallback is used.
 
 ## Explicitly Out of Scope
@@ -141,4 +141,4 @@ paths, RTSP URLs, tokens, or exception text.
   integration, and payments data.
 - Transaction reconstruction, loss detection, accusations, automated alerts,
   and review-case creation from one camera.
-- Coins, because the selected published model covers Vietnamese banknotes only.
+- Coins and denomination recognition.
