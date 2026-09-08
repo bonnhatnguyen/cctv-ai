@@ -9,7 +9,6 @@ from collections import deque
 from app.rules.events import derive_events
 from app.rules.transactions import correlate
 from app.schemas import Observation, RuleConfig
-from app.vision.tracker import Tracker
 
 
 @dataclass
@@ -30,11 +29,11 @@ class PersonInferenceWorker:
     """
     CANDIDATE_CLASSES = ["person", "human hand", "banknote", "cash basket", "goods"]
 
-    def __init__(self, camera_id: str, rtsp_env_key: str, interval_seconds: float = 1.0):
+    def __init__(self, camera_id: str, rtsp_env_key: str, interval_seconds: float = 0.35):
         self.camera_id, self.rtsp_env_key, self.interval_seconds = camera_id, rtsp_env_key, interval_seconds
         self.status = InferenceStatus()
-        self._tracker = Tracker()
         self._observations: deque[Observation] = deque(maxlen=180)
+        self._detection_history: deque[tuple[int, list[dict]]] = deque(maxlen=120)
         self._rules = RuleConfig()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
@@ -53,9 +52,10 @@ class PersonInferenceWorker:
             self._thread.join(timeout=3)
 
     def snapshot(self) -> dict:
+        delayed_detections = self._detections_for_hls()
         return {"state": self.status.state, "people_count": self.status.people_count, "updated_at_ms": self.status.updated_at_ms,
                 "candidates": self.status.candidates or {}, "event_kinds": self.status.event_kinds or [],
-                "transaction_statuses": self.status.transaction_statuses or [], "detections": self.status.detections or [],
+                "transaction_statuses": self.status.transaction_statuses or [], "detections": delayed_detections,
                 "scope": "candidate_detection_only"}
 
     def _run(self) -> None:
@@ -75,7 +75,8 @@ class PersonInferenceWorker:
                     self.status.state = "connection_failed"
                     time.sleep(self.interval_seconds)
                     continue
-                result = model(frame, verbose=False, conf=0.20)[0]
+                # Ultralytics ByteTrack preserves IDs across motion and occlusion.
+                result = model.track(frame, persist=True, tracker="bytetrack.yaml", verbose=False, conf=0.20)[0]
                 names = result.names
                 counts = {label: 0 for label in self.CANDIDATE_CLASSES}
                 for class_id in result.boxes.cls.tolist():
@@ -85,10 +86,10 @@ class PersonInferenceWorker:
                 self.status.people_count = counts.get("person", 0)
                 self.status.updated_at_ms = int(time.time() * 1000)
                 observations = self._observations_from_result(result, names, frame.shape[1], frame.shape[0])
-                tracked = self._tracker.update(self.camera_id, observations)
                 self.status.detections = [{"track_id": item.track_id, "kind": item.kind, "confidence": round(item.confidence, 2),
-                    "bbox": item.bbox} for item in tracked if item.bbox]
-                self._observations.extend(tracked)
+                    "bbox": item.bbox} for item in observations if item.bbox]
+                self._detection_history.append((int(time.time() * 1000), self.status.detections))
+                self._observations.extend(observations)
                 events = derive_events(tuple(self._observations), self._rules)
                 transactions = correlate(events, self._rules)
                 self.status.event_kinds = [event.kind.value for event in events[-5:]]
@@ -101,10 +102,18 @@ class PersonInferenceWorker:
             # Do not expose stream URLs, credentials, or model internals via the API.
             self.status.state = "model_or_stream_unavailable"
 
+    def _detections_for_hls(self) -> list[dict]:
+        """Return boxes from the video time currently being played, not latest RTSP time."""
+        if not self._detection_history:
+            return []
+        target = int(time.time() * 1000) - 3_500
+        return min(self._detection_history, key=lambda entry: abs(entry[0] - target))[1]
+
     def _observations_from_result(self, result, names, width: int, height: int) -> list[Observation]:
         label_map = {"person": "person", "human hand": "hand", "banknote": "cash_note", "cash basket": "cash_basket", "goods": "goods"}
         rows: list[tuple[str, float, tuple[float, float, float, float]]] = []
-        for box, class_id, confidence in zip(result.boxes.xyxy.tolist(), result.boxes.cls.tolist(), result.boxes.conf.tolist()):
+        track_ids = result.boxes.id.tolist() if result.boxes.id is not None else [None] * len(result.boxes)
+        for box, class_id, confidence, track_id in zip(result.boxes.xyxy.tolist(), result.boxes.cls.tolist(), result.boxes.conf.tolist(), track_ids):
             label = names[int(class_id)]
             kind = label_map.get(label)
             if not kind:
@@ -112,14 +121,15 @@ class PersonInferenceWorker:
             x1, y1, x2, y2 = box
             bbox = (max(0.0, x1 / width), max(0.0, y1 / height), min(1.0, x2 / width), min(1.0, y2 / height))
             if bbox[0] < bbox[2] and bbox[1] < bbox[3]:
-                rows.append((kind, confidence, bbox))
-        basket_boxes = [bbox for kind, _, bbox in rows if kind == "cash_basket"]
+                rows.append((kind, confidence, bbox, track_id))
+        basket_boxes = [bbox for kind, _, bbox, _ in rows if kind == "cash_basket"]
         timestamp = int(time.time() * 1000)
         observations = []
-        for kind, confidence, bbox in rows:
+        for kind, confidence, bbox, track_id in rows:
             center = ((bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2)
             roi = "cash_basket" if kind == "cash_basket" or (kind == "cash_note" and any(_contains(box, center) for box in basket_boxes)) else None
-            observations.append(Observation(camera_id=self.camera_id, timestamp_ms=timestamp, kind=kind, confidence=confidence, bbox=bbox, roi_id=roi))
+            stable_id = f"{self.camera_id}-{int(track_id)}" if track_id is not None else None
+            observations.append(Observation(camera_id=self.camera_id, timestamp_ms=timestamp, kind=kind, confidence=confidence, bbox=bbox, roi_id=roi, track_id=stable_id))
         return observations
 
 
