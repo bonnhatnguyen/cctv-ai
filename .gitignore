@@ -10,3 +10,4 @@ backend/weights/
 node_modules/
 dist/
 *.tsbuildinfo
+.worktrees/
