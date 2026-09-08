@@ -76,7 +76,8 @@ class PersonInferenceWorker:
                     time.sleep(self.interval_seconds)
                     continue
                 # Ultralytics ByteTrack preserves IDs across motion and occlusion.
-                result = model.track(frame, persist=True, tracker="bytetrack.yaml", verbose=False, conf=0.20)[0]
+                result = model.track(frame, persist=True, tracker="app/vision/bytetrack_retail.yaml", verbose=False,
+                                     conf=0.45, iou=0.45, agnostic_nms=True, max_det=20)[0]
                 names = result.names
                 counts = {label: 0 for label in self.CANDIDATE_CLASSES}
                 for class_id in result.boxes.cls.tolist():
@@ -85,7 +86,7 @@ class PersonInferenceWorker:
                 self.status.candidates = counts
                 self.status.people_count = counts.get("person", 0)
                 self.status.updated_at_ms = int(time.time() * 1000)
-                observations = self._observations_from_result(result, names, frame.shape[1], frame.shape[0])
+                observations = _suppress_overlaps(self._observations_from_result(result, names, frame.shape[1], frame.shape[0]))
                 self.status.detections = [{"track_id": item.track_id, "kind": item.kind, "confidence": round(item.confidence, 2),
                     "bbox": item.bbox} for item in observations if item.bbox]
                 self._detection_history.append((int(time.time() * 1000), self.status.detections))
@@ -135,3 +136,22 @@ class PersonInferenceWorker:
 
 def _contains(bbox: tuple[float, float, float, float], point: tuple[float, float]) -> bool:
     return bbox[0] <= point[0] <= bbox[2] and bbox[1] <= point[1] <= bbox[3]
+
+
+def _suppress_overlaps(observations: list[Observation], threshold: float = 0.35) -> list[Observation]:
+    """A final display guard: one overlapping box per class/object candidate."""
+    accepted: list[Observation] = []
+    for observation in sorted(observations, key=lambda item: item.confidence, reverse=True):
+        if observation.bbox and any(item.kind == observation.kind and item.bbox and _iou(item.bbox, observation.bbox) >= threshold for item in accepted):
+            continue
+        accepted.append(observation)
+    return accepted
+
+
+def _iou(a: tuple[float, float, float, float], b: tuple[float, float, float, float]) -> float:
+    left, top, right, bottom = max(a[0], b[0]), max(a[1], b[1]), min(a[2], b[2]), min(a[3], b[3])
+    intersection = max(0, right - left) * max(0, bottom - top)
+    if not intersection:
+        return 0.0
+    area_a, area_b = (a[2] - a[0]) * (a[3] - a[1]), (b[2] - b[0]) * (b[3] - b[1])
+    return intersection / (area_a + area_b - intersection)
