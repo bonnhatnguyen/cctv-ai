@@ -28,6 +28,7 @@ class PersonInferenceWorker:
     Candidate labels are never elevated to transaction evidence without validation.
     """
     CANDIDATE_CLASSES = ["person", "human hand", "banknote", "cash basket", "goods"]
+    YOLO_CLASSES = ["person", "banknote", "cash basket", "goods"]
 
     def __init__(self, camera_id: str, rtsp_env_key: str, interval_seconds: float = 0.35):
         self.camera_id, self.rtsp_env_key, self.interval_seconds = camera_id, rtsp_env_key, interval_seconds
@@ -62,8 +63,10 @@ class PersonInferenceWorker:
         try:
             import cv2
             from ultralytics import YOLOWorld
+            from app.vision.hands import HandLandmarkTracker
             model = YOLOWorld("yolov8s-worldv2.pt")
-            model.set_classes(self.CANDIDATE_CLASSES)
+            model.set_classes(self.YOLO_CLASSES)
+            hand_tracker = HandLandmarkTracker(self.camera_id)
             capture = cv2.VideoCapture(os.environ[self.rtsp_env_key])
             if not capture.isOpened():
                 self.status.state = "connection_failed"
@@ -83,10 +86,13 @@ class PersonInferenceWorker:
                 for class_id in result.boxes.cls.tolist():
                     label = names[int(class_id)]
                     counts[label] = counts.get(label, 0) + 1
+                observations = self._observations_from_result(result, names, frame.shape[1], frame.shape[0])
+                hand_observations = self._observations_from_hands(hand_tracker.detect(frame))
+                counts["human hand"] = len(hand_observations)
                 self.status.candidates = counts
                 self.status.people_count = counts.get("person", 0)
                 self.status.updated_at_ms = int(time.time() * 1000)
-                observations = _suppress_overlaps(self._observations_from_result(result, names, frame.shape[1], frame.shape[0]))
+                observations = _suppress_overlaps(observations + hand_observations)
                 self.status.detections = [{"track_id": item.track_id, "kind": item.kind, "confidence": round(item.confidence, 2),
                     "bbox": item.bbox} for item in observations if item.bbox]
                 self._detection_history.append((int(time.time() * 1000), self.status.detections))
@@ -99,6 +105,7 @@ class PersonInferenceWorker:
                 self.status.state = "running"
                 self._stop.wait(self.interval_seconds)
             capture.release()
+            hand_tracker.close()
         except Exception:
             # Do not expose stream URLs, credentials, or model internals via the API.
             self.status.state = "model_or_stream_unavailable"
@@ -132,6 +139,12 @@ class PersonInferenceWorker:
             stable_id = f"{self.camera_id}-{int(track_id)}" if track_id is not None else None
             observations.append(Observation(camera_id=self.camera_id, timestamp_ms=timestamp, kind=kind, confidence=confidence, bbox=bbox, roi_id=roi, track_id=stable_id))
         return observations
+
+    def _observations_from_hands(self, detections) -> list[Observation]:
+        timestamp = int(time.time() * 1000)
+        return [Observation(camera_id=self.camera_id, timestamp_ms=timestamp, kind="hand",
+                            confidence=item.confidence, bbox=item.bbox, track_id=item.track_id)
+                for item in detections]
 
 
 def _contains(bbox: tuple[float, float, float, float], point: tuple[float, float]) -> bool:
