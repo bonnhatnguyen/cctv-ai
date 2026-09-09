@@ -1,5 +1,7 @@
 # V1 Offline Person Tracking Implementation Plan
 
+> SUPERSEDED after the Astra audit. Do not execute the tasks below. The active plan is [2026-09-09-v1-offline-person-tracking-revised.md](2026-09-09-v1-offline-person-tracking-revised.md). This file preserves the original plan for comparison; its self-review claims were not supported by the audit.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (\`- [ ]\`) syntax for tracking.
 
 **Goal:** Build a local MP4-import workflow that outputs a browser-playable YOLO26/ByteTrack person-tracking video with local numeric IDs.
