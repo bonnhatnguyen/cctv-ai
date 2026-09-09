@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import math
 import os
 import subprocess
@@ -12,8 +13,11 @@ from typing import Callable
 import cv2
 
 from .contracts import Progress, RunOptions, RunSummary, Stage, TrackedPerson, VideoMetadata
-from .media import _ffprobe_timestamps, annotate_people, probe_video, validate_output
+from .media import annotate_people, fully_decode_video, probe_video, validate_output
 from .tracker import PersonTracker
+
+
+logger = logging.getLogger(__name__)
 
 
 def _noop(_progress: Progress) -> None:
@@ -88,10 +92,11 @@ def process_video(
     evidence_path = Path(evidence_path)
     _validate_paths(source, output, evidence_path)
     source_metadata = probe_video(source)
-    source_timestamps = _ffprobe_timestamps(source)
-    if not source_timestamps:
-        raise ValueError("video frame timestamps are unavailable")
-    if source_metadata.frame_count_estimate is not None and len(source_timestamps) != source_metadata.frame_count_estimate:
+    source_decode = fully_decode_video(source)
+    source_timestamps = source_decode.timestamps
+    if source_decode.decoded_frames == 0:
+        raise ValueError("video contains no decodable frames")
+    if source_metadata.frame_count_estimate is not None and source_decode.decoded_frames != source_metadata.frame_count_estimate:
         raise ValueError("video frame timestamp count is inconsistent")
     output.parent.mkdir(parents=True, exist_ok=True)
     evidence_path.parent.mkdir(parents=True, exist_ok=True)
@@ -134,7 +139,14 @@ def process_video(
             people = _map_people_to_source(tracking.people, source_metadata.width, inference_frame.shape[1])
             annotated = annotate_people(frame, people)
             assert encoder.stdin is not None
-            encoder.stdin.write(annotated.tobytes())
+            try:
+                encoder.stdin.write(annotated.tobytes())
+            except (BrokenPipeError, OSError) as exc:
+                encoder.wait()
+                if stderr_thread:
+                    stderr_thread.join(timeout=10)
+                detail = b"".join(stderr_chunks).decode(errors="replace").strip()
+                raise RuntimeError(f"video encoder failed{': ' + detail if detail else ''}") from exc
             processed += 1
             tracking_wall_total += tracking.tracking_wall_ms
             if tracking.inference_ms is not None:
@@ -152,8 +164,13 @@ def process_video(
         capture = None
         if processed == 0:
             raise ValueError("video contains no decodable frames")
-        if source_metadata.frame_count_estimate and processed != source_metadata.frame_count_estimate:
-            raise ValueError("video decode ended before its advertised frame count")
+        if processed != source_decode.decoded_frames:
+            logger.warning(
+                "video decode ended early: expected_decoded_frames=%s processed_frames=%s",
+                source_decode.decoded_frames,
+                processed,
+            )
+            raise ValueError("video decode ended before the full source frame count; possible truncation")
         on_progress(Progress(Stage.ENCODING, processed, source_metadata.frame_count_estimate))
         assert encoder.stdin is not None
         try:

@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import json
+import logging
 import math
+import os
 import subprocess
+from dataclasses import dataclass
 from fractions import Fraction
 from pathlib import Path
 
@@ -11,6 +14,19 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 from .contracts import TrackedPerson, VideoMetadata
+
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class DecodedVideo:
+    codec: str
+    pixel_format: str
+    width: int
+    height: int
+    decoded_frames: int
+    timestamps: tuple[float, ...]
 
 
 def _ffprobe_json(path: Path) -> dict:
@@ -183,16 +199,84 @@ def decoded_frame_count(path: Path) -> int:
     return count
 
 
+def fully_decode_video(path: Path) -> DecodedVideo:
+    """Decode the complete video with FFmpeg and fail on any decode error."""
+    path = Path(path)
+    info = output_stream_info(path)
+    timestamps = tuple(_ffprobe_timestamps(path))
+    command = [
+        "ffmpeg", "-nostdin", "-v", "error", "-xerror", "-i", str(path),
+        "-map", "0:v:0", "-an", "-progress", "pipe:1", "-nostats",
+        "-f", "null", os.devnull,
+    ]
+    completed = subprocess.run(command, capture_output=True, text=True, check=False)
+    if completed.returncode:
+        detail = completed.stderr.strip()
+        raise ValueError(f"video decode failed{': ' + detail if detail else ''}")
+    progress = {}
+    for line in completed.stdout.splitlines():
+        key, separator, value = line.partition("=")
+        if separator:
+            progress[key] = value
+    try:
+        decoded_frames = int(progress["frame"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError("video decoder did not report a frame count") from exc
+    if progress.get("progress") != "end":
+        raise ValueError("video decode did not reach the end")
+    if decoded_frames != len(timestamps):
+        raise ValueError("decoded frame and timestamp counts differ")
+    try:
+        width, height = int(info["width"]), int(info["height"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError("video dimensions are unavailable") from exc
+    return DecodedVideo(
+        codec=str(info.get("codec_name") or "unknown"),
+        pixel_format=str(info.get("pix_fmt") or "unknown"),
+        width=width,
+        height=height,
+        decoded_frames=decoded_frames,
+        timestamps=timestamps,
+    )
+
+
 def validate_output(source: VideoMetadata, decoded_input_frames: int, output: Path) -> VideoMetadata:
     metadata = probe_video(output)
-    info = output_stream_info(output)
-    if metadata.width != source.width or metadata.height != source.height:
-        raise ValueError("output resolution does not match source")
-    if info.get("codec_name") != "h264" or info.get("pix_fmt") != "yuv420p":
-        raise ValueError("output is not H.264/yuv420p")
-    if decoded_frame_count(output) != decoded_input_frames:
-        raise ValueError("output frame count does not match decoded input")
+    decoded = fully_decode_video(output)
+
+    def reject(message: str) -> None:
+        logger.warning(
+            "%s: source_frames=%s output_frames=%s source_duration_ms=%s output_duration_ms=%s",
+            message,
+            decoded_input_frames,
+            decoded.decoded_frames,
+            source.duration_ms,
+            metadata.duration_ms,
+        )
+        raise ValueError(message)
+
+    if decoded_input_frames <= 0:
+        reject("decoded input has no frames")
+    if decoded.width != source.width or decoded.height != source.height:
+        reject("output resolution does not match source")
+    if decoded.codec != "h264" or decoded.pixel_format != "yuv420p":
+        reject("output is not H.264/yuv420p")
+    if decoded.decoded_frames != decoded_input_frames:
+        reject("output frame count does not match decoded input; possible truncation")
+    if Fraction(metadata.fps_num, metadata.fps_den) != Fraction(source.fps_num, source.fps_den):
+        reject("output frame rate does not match source")
     source_frame_ms = 1000.0 * source.fps_den / source.fps_num
+    allowed_duration_delta_ms = source_frame_ms + 50
+    decoded_input_duration_ms = decoded_input_frames * source_frame_ms
+    if abs(source.duration_ms - decoded_input_duration_ms) > allowed_duration_delta_ms:
+        reject("decoded input frame coverage does not match source metadata")
     if abs(metadata.duration_ms - source.duration_ms) > source_frame_ms + 50:
-        raise ValueError("output duration does not match source")
+        reject("output duration does not match source")
+    if abs(metadata.duration_ms - decoded.decoded_frames * source_frame_ms) > allowed_duration_delta_ms:
+        reject("output frame coverage does not match its duration")
+    if decoded.decoded_frames > 1:
+        timestamp_span_ms = (decoded.timestamps[-1] - decoded.timestamps[0]) * 1000
+        expected_span_ms = (decoded.decoded_frames - 1) * source_frame_ms
+        if abs(timestamp_span_ms - expected_span_ms) > max(2.0, source_frame_ms * 0.05):
+            reject("output timestamp coverage is inconsistent")
     return metadata

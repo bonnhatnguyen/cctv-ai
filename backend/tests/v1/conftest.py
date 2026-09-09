@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import subprocess
+
 import numpy as np
 import pytest
 
@@ -62,3 +64,25 @@ def tracker_without_ids(frame):
         return FakeModel(lambda: FakeResult(ArrayBox([[10, 20, 100, 200]], [0], [0.87], None)))
 
     return PersonTracker("model.pt", "cpu", model_factory=factory)
+
+
+@pytest.fixture
+def encoded_three_frame_video(tmp_path):
+    output = tmp_path / "three-frames.mp4"
+    subprocess.run(
+        [
+            "ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i",
+            "color=c=black:s=640x360:r=25:d=0.12", "-frames:v", "3",
+            "-an", "-c:v", "libx264", "-pix_fmt", "yuv420p", str(output),
+        ],
+        check=True,
+    )
+    return output
+
+
+@pytest.fixture
+def encoded_three_frame_result(encoded_three_frame_video):
+    """Fully decode real H.264 rather than trusting a suffix/MIME."""
+    from app.v1 import media
+
+    return media.fully_decode_video(encoded_three_frame_video)

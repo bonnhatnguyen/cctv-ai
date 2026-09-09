@@ -1,9 +1,34 @@
 from __future__ import annotations
 
 import subprocess
+from dataclasses import replace
 
 import cv2
 import numpy as np
+
+
+def test_real_encoded_output(encoded_three_frame_result):
+    result = encoded_three_frame_result
+    assert (result.codec, result.pixel_format) == ("h264", "yuv420p")
+    assert (result.width, result.height, result.decoded_frames) == (640, 360, 3)
+
+
+def test_validate_output_rejects_decoder_truncation(
+    encoded_three_frame_video, encoded_three_frame_result, monkeypatch
+):
+    from app.v1 import media
+
+    source = media.probe_video(encoded_three_frame_video)
+    truncated = replace(encoded_three_frame_result, decoded_frames=2, timestamps=(0.0, 0.04))
+    monkeypatch.setattr(media, "fully_decode_video", lambda _path: truncated)
+    monkeypatch.setattr(media, "decoded_frame_count", lambda _path: 3)
+
+    try:
+        media.validate_output(source, 3, encoded_three_frame_video)
+    except ValueError as exc:
+        assert "frame" in str(exc).lower() or "trunc" in str(exc).lower()
+    else:
+        raise AssertionError("a premature decoder stop must be rejected")
 
 
 def test_probe_video_reports_rational_metadata(tmp_path):
