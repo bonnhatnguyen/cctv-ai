@@ -1,0 +1,49 @@
+from __future__ import annotations
+
+import subprocess
+
+import cv2
+import numpy as np
+
+
+def test_probe_video_reports_rational_metadata(tmp_path):
+    from app.v1.media import probe_video
+
+    source = tmp_path / "tiny.mp4"
+    writer = cv2.VideoWriter(str(source), cv2.VideoWriter_fourcc(*"mp4v"), 25, (640, 360))
+    for _ in range(3):
+        writer.write(np.zeros((360, 640, 3), dtype=np.uint8))
+    writer.release()
+    metadata = probe_video(source)
+    assert (metadata.width, metadata.height) == (640, 360)
+    assert (metadata.fps_num, metadata.fps_den) == (25, 1)
+    assert metadata.frame_count_estimate == 3
+    assert metadata.codec == "mpeg4"
+
+
+def test_probe_video_rejects_odd_dimensions(tmp_path, monkeypatch):
+    from app.v1 import media
+
+    odd = tmp_path / "odd.mp4"
+    odd.touch()
+    monkeypatch.setattr(media, "_ffprobe_json", lambda _path: {
+        "streams": [{"codec_name": "h264", "width": 641, "height": 360,
+                      "r_frame_rate": "25/1", "avg_frame_rate": "25/1",
+                      "duration": "1", "nb_frames": "25", "sample_aspect_ratio": "1:1"}]
+    })
+    try:
+        media.probe_video(odd)
+    except ValueError as exc:
+        assert "odd" in str(exc).lower()
+    else:
+        raise AssertionError("odd dimensions should be rejected")
+
+
+def test_annotate_people_writes_vietnamese_id_label(person_tracker):
+    from app.v1.media import annotate_people
+
+    frame = np.zeros((360, 640, 3), dtype=np.uint8)
+    people = person_tracker.track_frame(frame).people
+    annotated = annotate_people(frame, people)
+    assert annotated.shape == frame.shape
+    assert not np.array_equal(annotated, frame)
