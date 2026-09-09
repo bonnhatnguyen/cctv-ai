@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import cv2
+import hashlib
 import numpy as np
+import os
+import pytest
 
 
 def _tiny_source(path):
@@ -47,3 +50,44 @@ def test_process_video_encodes_all_frames_and_writes_frame_evidence(tmp_path, mo
     capture.release()
     assert frames == 3
     assert len(evidence.read_text(encoding="utf-8").splitlines()) == 3
+
+
+def test_existing_evidence_is_rejected_before_processing_and_source_is_unchanged(tmp_path):
+    from app.v1.contracts import RunOptions
+    from app.v1.pipeline import process_video
+
+    source = tmp_path / "source.mp4"
+    source.write_bytes(b"original-source")
+    evidence = tmp_path / "existing.jsonl"
+    evidence.write_text("keep me", encoding="utf-8")
+    before = hashlib.sha256(source.read_bytes()).hexdigest()
+    with pytest.raises(FileExistsError):
+        process_video(source, tmp_path / "result.mp4", RunOptions("missing.pt"), evidence_path=evidence)
+    assert hashlib.sha256(source.read_bytes()).hexdigest() == before
+    assert evidence.read_text(encoding="utf-8") == "keep me"
+
+
+def test_hardlink_evidence_alias_is_rejected_before_processing(tmp_path):
+    from app.v1.contracts import RunOptions
+    from app.v1.pipeline import process_video
+
+    source = tmp_path / "source.mp4"
+    source.write_bytes(b"original-source")
+    evidence = tmp_path / "evidence.jsonl"
+    os.link(source, evidence)
+    before = hashlib.sha256(source.read_bytes()).hexdigest()
+    with pytest.raises(ValueError, match="different|alias"):
+        process_video(source, tmp_path / "result.mp4", RunOptions("missing.pt"), evidence_path=evidence)
+    assert hashlib.sha256(source.read_bytes()).hexdigest() == before
+
+
+def test_output_hardlink_alias_is_rejected_before_processing(tmp_path):
+    from app.v1.contracts import RunOptions
+    from app.v1.pipeline import process_video
+
+    source = tmp_path / "source.mp4"
+    source.write_bytes(b"original-source")
+    output = tmp_path / "result.mp4"
+    os.link(source, output)
+    with pytest.raises(ValueError, match="different|alias"):
+        process_video(source, output, RunOptions("missing.pt"))

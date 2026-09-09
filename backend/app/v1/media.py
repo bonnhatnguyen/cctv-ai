@@ -27,6 +27,45 @@ def _ffprobe_json(path: Path) -> dict:
         raise ValueError("ffprobe returned invalid metadata") from exc
 
 
+def _ffprobe_timestamps(path: Path) -> list[float]:
+    command = [
+        "ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
+        "frame=best_effort_timestamp_time", "-of", "json", str(path),
+    ]
+    completed = subprocess.run(command, capture_output=True, text=True, check=False)
+    if completed.returncode or not completed.stdout:
+        raise ValueError(f"unable to read video frame timestamps: {path.name}")
+    try:
+        frames = json.loads(completed.stdout).get("frames") or []
+        return [float(frame["best_effort_timestamp_time"]) for frame in frames]
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise ValueError("video frame timestamps are unavailable") from exc
+
+
+def validate_cfr_timestamps(timestamps: list[float], fps_num: int, fps_den: int) -> None:
+    """Reject VFR while allowing one known recorder startup near-duplicate.
+
+    The initial CFR allowance is ±2 ms around the nominal interval.  Exactly
+    one first delta <= 1.5 ms is permitted for the recorder's startup duplicate;
+    every other delta must be within tolerance.  This accepts the approved
+    baseline's 11 µs startup delta and 39/41 ms endpoint deltas.
+    """
+    if len(timestamps) < 2:
+        return
+    expected = fps_den / fps_num
+    tolerance = max(0.002, expected * 0.025)
+    startup_limit = min(0.0015, expected * 0.05)
+    for index, (before, after) in enumerate(zip(timestamps, timestamps[1:])):
+        delta = after - before
+        if delta <= 0 or not math.isfinite(delta):
+            raise ValueError("video has invalid frame timestamps")
+        if abs(delta - expected) <= tolerance:
+            continue
+        if index == 0 and delta <= startup_limit:
+            continue
+        raise ValueError("variable frame timing is unsupported")
+
+
 def _fraction(value: str | None, field: str) -> Fraction:
     if not value or value in {"0/0", "N/A"}:
         raise ValueError(f"video has no usable {field}")
@@ -70,6 +109,12 @@ def probe_video(path: Path) -> VideoMetadata:
         frame_count = int(stream["nb_frames"]) if stream.get("nb_frames") not in {None, "N/A"} else None
     except (TypeError, ValueError):
         frame_count = None
+    timestamps = _ffprobe_timestamps(path)
+    if not timestamps:
+        raise ValueError("video frame timestamps are unavailable")
+    if frame_count is not None and timestamps and len(timestamps) != frame_count:
+        raise ValueError("video frame timestamp count is inconsistent")
+    validate_cfr_timestamps(timestamps, frame_rate.numerator, frame_rate.denominator)
     sar = stream.get("sample_aspect_ratio") or "1:1"
     return VideoMetadata(
         size_bytes=path.stat().st_size,

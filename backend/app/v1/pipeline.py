@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import subprocess
 import threading
 import time
@@ -11,7 +12,7 @@ from typing import Callable
 import cv2
 
 from .contracts import Progress, RunOptions, RunSummary, Stage, TrackedPerson, VideoMetadata
-from .media import annotate_people, probe_video, validate_output
+from .media import _ffprobe_timestamps, annotate_people, probe_video, validate_output
 from .tracker import PersonTracker
 
 
@@ -52,6 +53,26 @@ def _start_encoder(output: Path, metadata: VideoMetadata):
     return subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
 
 
+def _same_file(left: Path, right: Path) -> bool:
+    try:
+        return os.path.samefile(left, right)
+    except (FileNotFoundError, OSError):
+        return left.resolve(strict=False) == right.resolve(strict=False)
+
+
+def _validate_paths(source: Path, output: Path, evidence: Path) -> None:
+    if _same_file(source, output):
+        raise ValueError("input, output, and evidence must be different files")
+    if _same_file(source, evidence):
+        raise ValueError("input, output, and evidence must be different files")
+    if _same_file(output, evidence):
+        raise ValueError("input, output, and evidence must be different files")
+    if output.exists():
+        raise FileExistsError(output)
+    if evidence.exists():
+        raise FileExistsError(evidence)
+
+
 def process_video(
     source: Path,
     output: Path,
@@ -63,30 +84,36 @@ def process_video(
     source, output = Path(source), Path(output)
     if not source.is_file():
         raise FileNotFoundError(source)
-    if source.resolve() == output.resolve():
-        raise ValueError("input and output must be different files")
-    if output.exists():
-        raise FileExistsError(output)
+    evidence_path = evidence_path or output.with_name(output.stem + ".evidence.jsonl")
+    evidence_path = Path(evidence_path)
+    _validate_paths(source, output, evidence_path)
     source_metadata = probe_video(source)
+    source_timestamps = _ffprobe_timestamps(source)
+    if not source_timestamps:
+        raise ValueError("video frame timestamps are unavailable")
+    if source_metadata.frame_count_estimate is not None and len(source_timestamps) != source_metadata.frame_count_estimate:
+        raise ValueError("video frame timestamp count is inconsistent")
     output.parent.mkdir(parents=True, exist_ok=True)
+    evidence_path.parent.mkdir(parents=True, exist_ok=True)
+    evidence_handle = evidence_path.open("x", encoding="utf-8")
     started = time.perf_counter()
     on_progress(Progress(Stage.LOADING, 0, source_metadata.frame_count_estimate))
-    tracker = PersonTracker(options.model_path, options.device, options.image_size)
-    capture = cv2.VideoCapture(str(source))
-    if not capture.isOpened():
-        raise ValueError(f"unable to decode video: {source.name}")
+    tracker = None
+    capture = None
     encoder = None
     stderr_chunks: list[bytes] = []
     stderr_thread: threading.Thread | None = None
-    evidence_handle = None
     processed = 0
     inference_samples = 0
     inference_total = 0.0
     tracking_wall_total = 0.0
     track_ids: set[int] = set()
     succeeded = False
-    evidence_path = evidence_path or output.with_name(output.stem + ".evidence.jsonl")
     try:
+        tracker = PersonTracker(options.model_path, options.device, options.image_size)
+        capture = cv2.VideoCapture(str(source))
+        if not capture.isOpened():
+            raise ValueError(f"unable to decode video: {source.name}")
         encoder = _start_encoder(output, source_metadata)
         if encoder.stderr is not None:
             def drain_stderr() -> None:
@@ -98,9 +125,6 @@ def process_video(
 
             stderr_thread = threading.Thread(target=drain_stderr, daemon=True)
             stderr_thread.start()
-        if evidence_path:
-            evidence_path.parent.mkdir(parents=True, exist_ok=True)
-            evidence_handle = evidence_path.open("w", encoding="utf-8")
         while True:
             ok, frame = capture.read()
             if not ok:
@@ -120,11 +144,12 @@ def process_video(
             if evidence_handle:
                 evidence_handle.write(json.dumps({
                     "frame_index": processed - 1,
-                    "source_timestamp_ms": round((processed - 1) * 1000 * source_metadata.fps_den / source_metadata.fps_num, 3),
+                    "source_timestamp_ms": round(source_timestamps[processed - 1] * 1000, 3),
                     "boxes": [{"track_id": p.track_id, "confidence": p.confidence, "xyxy": p.xyxy} for p in people],
                 }, ensure_ascii=False) + "\n")
             on_progress(Progress(Stage.TRACKING, processed, source_metadata.frame_count_estimate))
         capture.release()
+        capture = None
         if processed == 0:
             raise ValueError("video contains no decodable frames")
         if source_metadata.frame_count_estimate and processed != source_metadata.frame_count_estimate:
@@ -161,7 +186,8 @@ def process_video(
         succeeded = True
         return summary
     finally:
-        capture.release()
+        if capture is not None:
+            capture.release()
         if evidence_handle:
             evidence_handle.close()
         if encoder is not None and encoder.poll() is None:

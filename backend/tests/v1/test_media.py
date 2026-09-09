@@ -39,6 +39,39 @@ def test_probe_video_rejects_odd_dimensions(tmp_path, monkeypatch):
         raise AssertionError("odd dimensions should be rejected")
 
 
+def test_probe_video_allows_one_startup_near_duplicate(tmp_path, monkeypatch):
+    from app.v1 import media
+
+    source = tmp_path / "startup-irregular.mp4"
+    source.touch()
+    monkeypatch.setattr(media, "_ffprobe_json", lambda _path: {
+        "streams": [{"codec_name": "h264", "width": 640, "height": 360,
+                      "r_frame_rate": "25/1", "avg_frame_rate": "25/1",
+                      "duration": "0.12", "nb_frames": "3", "sample_aspect_ratio": "1:1"}]
+    })
+    monkeypatch.setattr(media, "_ffprobe_timestamps", lambda _path: [0.0, 0.000011, 0.040011])
+    assert media.probe_video(source).fps_num == 25
+
+
+def test_probe_video_rejects_sustained_variable_timing(tmp_path, monkeypatch):
+    from app.v1 import media
+
+    source = tmp_path / "vfr.mp4"
+    source.touch()
+    monkeypatch.setattr(media, "_ffprobe_json", lambda _path: {
+        "streams": [{"codec_name": "h264", "width": 640, "height": 360,
+                      "r_frame_rate": "25/1", "avg_frame_rate": "25/1",
+                      "duration": "0.12", "nb_frames": "4", "sample_aspect_ratio": "1:1"}]
+    })
+    monkeypatch.setattr(media, "_ffprobe_timestamps", lambda _path: [0.0, 0.03, 0.06, 0.09])
+    try:
+        media.probe_video(source)
+    except ValueError as exc:
+        assert "variable" in str(exc).lower()
+    else:
+        raise AssertionError("sustained variable timing should be rejected")
+
+
 def test_annotate_people_writes_vietnamese_id_label(person_tracker):
     from app.v1.media import annotate_people
 

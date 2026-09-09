@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+import time
 
 from .conftest import ArrayBox, FakeResult
 
@@ -46,3 +47,35 @@ def test_tracker_state_is_not_shared_between_instances(frame):
     first.track_frame(frame)
     second.track_frame(frame)
     assert len(models) == 2
+
+
+def test_tracking_wall_time_includes_result_materialization(frame):
+    from app.v1.tracker import PersonTracker
+
+    class SlowArray:
+        def __init__(self, values):
+            self.values = values
+
+        def tolist(self):
+            time.sleep(0.03)
+            return self.values
+
+    class Boxes:
+        xyxy = SlowArray([[10, 20, 100, 200]])
+        cls = SlowArray([0])
+        conf = SlowArray([0.8])
+        id = SlowArray([7])
+
+    class Result:
+        boxes = Boxes()
+        speed = {"inference": 1.0}
+
+    class Model:
+        device = "cpu"
+        predictor = None
+
+        def track(self, _frame, **_kwargs):
+            return [Result()]
+
+    tracker = PersonTracker("model.pt", "cpu", model_factory=lambda _path: Model())
+    assert tracker.track_frame(frame).tracking_wall_ms >= 25

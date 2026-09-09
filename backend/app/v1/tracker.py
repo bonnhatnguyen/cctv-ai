@@ -87,7 +87,6 @@ class PersonTracker:
             classes=[0],
             verbose=False,
         )
-        wall_ms = (time.perf_counter() - started) * 1000.0
         if isinstance(results, (list, tuple)):
             result = results[0] if results else None
         else:
@@ -98,6 +97,7 @@ class PersonTracker:
             self.actual_device = _model_device(self._model, result, self.resolved_device)
             self.device_name = self._device_name(self.actual_device)
             people = self._people_from_result(result, frame.shape[1], frame.shape[0])
+        wall_ms = (time.perf_counter() - started) * 1000.0
         return FrameTracking(people=people, inference_ms=self._inference_ms(result), tracking_wall_ms=wall_ms)
 
     @staticmethod
