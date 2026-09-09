@@ -7,6 +7,7 @@ import os
 import pytest
 import subprocess
 import sys
+import time
 from dataclasses import replace
 
 
@@ -66,6 +67,25 @@ def test_process_video_encodes_all_frames_and_writes_frame_evidence(tmp_path, mo
     capture.release()
     assert frames == 3
     assert len(evidence.read_text(encoding="utf-8").splitlines()) == 3
+
+
+def test_processing_seconds_include_source_decode_before_tracking(tmp_path, monkeypatch):
+    from app.v1 import pipeline
+    from app.v1.contracts import RunOptions
+
+    source = tmp_path / "source.mp4"
+    output = tmp_path / "result.mp4"
+    _tiny_source(source)
+    original_decode = pipeline.fully_decode_video
+
+    def delayed_decode(path):
+        time.sleep(0.25)
+        return original_decode(path)
+
+    monkeypatch.setattr(pipeline, "fully_decode_video", delayed_decode)
+    monkeypatch.setattr(pipeline, "PersonTracker", _NoopTracker)
+    summary = pipeline.process_video(source, output, RunOptions("unused", "cpu"))
+    assert summary.processing_seconds >= 0.20
 
 
 def test_existing_evidence_is_rejected_before_processing_and_source_is_unchanged(tmp_path):

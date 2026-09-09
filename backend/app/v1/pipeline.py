@@ -86,6 +86,7 @@ def process_video(
     evidence_path: Path | None = None,
 ) -> RunSummary:
     source, output = Path(source), Path(output)
+    started = time.perf_counter()
     if not source.is_file():
         raise FileNotFoundError(source)
     evidence_path = evidence_path or output.with_name(output.stem + ".evidence.jsonl")
@@ -101,7 +102,6 @@ def process_video(
     output.parent.mkdir(parents=True, exist_ok=True)
     evidence_path.parent.mkdir(parents=True, exist_ok=True)
     evidence_handle = evidence_path.open("x", encoding="utf-8")
-    started = time.perf_counter()
     on_progress(Progress(Stage.LOADING, 0, source_metadata.frame_count_estimate))
     tracker = None
     capture = None

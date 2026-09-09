@@ -263,6 +263,13 @@ def validate_output(source: VideoMetadata, decoded_input_frames: int, output: Pa
         reject("output is not H.264/yuv420p")
     if decoded.decoded_frames != decoded_input_frames:
         reject("output frame count does not match decoded input; possible truncation")
+    try:
+        source_sar = Fraction(source.sample_aspect_ratio.replace(":", "/"))
+        output_sar = Fraction(metadata.sample_aspect_ratio.replace(":", "/"))
+    except (AttributeError, ValueError, ZeroDivisionError):
+        reject("sample aspect ratio is invalid")
+    if source_sar != output_sar:
+        reject("output sample aspect ratio does not match source")
     if Fraction(metadata.fps_num, metadata.fps_den) != Fraction(source.fps_num, source.fps_den):
         reject("output frame rate does not match source")
     source_frame_ms = 1000.0 * source.fps_den / source.fps_num

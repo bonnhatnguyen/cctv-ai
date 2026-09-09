@@ -31,6 +31,22 @@ def test_validate_output_rejects_decoder_truncation(
         raise AssertionError("a premature decoder stop must be rejected")
 
 
+def test_validate_output_rejects_sample_aspect_ratio_mismatch(
+    encoded_three_frame_video, encoded_three_frame_result
+):
+    from app.v1 import media
+
+    source = replace(
+        media.probe_video(encoded_three_frame_video), sample_aspect_ratio="2:1"
+    )
+    try:
+        media.validate_output(source, 3, encoded_three_frame_video)
+    except ValueError as exc:
+        assert "aspect" in str(exc).lower() or "sar" in str(exc).lower()
+    else:
+        raise AssertionError("sample aspect ratio mismatch should be rejected")
+
+
 def test_probe_video_reports_rational_metadata(tmp_path):
     from app.v1.media import probe_video
 
