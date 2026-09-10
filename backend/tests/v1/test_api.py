@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import shutil
+import threading
+import time
 from pathlib import Path
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -228,3 +231,67 @@ def test_chunked_upload_without_content_length_stops_before_full_body_is_spooled
     assert response_start["status"] == 413
     assert received_bytes <= limit + 4096
     assert list((settings.data_dir / "jobs").iterdir()) == []
+
+
+def test_oversized_content_length_is_rejected_as_413(api, encoded_three_frame_video):
+    client, app = api
+    declared_size = app.state.settings.max_upload_bytes + 64 * 1024 + 1
+
+    with encoded_three_frame_video.open("rb") as handle:
+        response = client.post(
+            "/api/v1/jobs",
+            files={"video": ("shop.mp4", handle, "video/mp4")},
+            headers={"Content-Length": str(declared_size)},
+        )
+
+    assert response.status_code == 413
+    assert response.json() == {"detail": "tep_video_qua_lon"}
+
+
+def test_health_responds_while_uploaded_video_validation_is_blocked(
+    tmp_path, encoded_three_frame_video, monkeypatch
+):
+    settings = V1Settings(data_dir=tmp_path / "concurrent")
+    app = create_app(settings=settings, worker_factory=ControlledWorker)
+    entered_validation = threading.Event()
+    release_validation = threading.Event()
+    original_validate = app.state.store._validate_and_publish
+
+    def blocking_validate(*args):
+        entered_validation.set()
+        assert release_validation.wait(2)
+        return original_validate(*args)
+
+    monkeypatch.setattr(app.state.store, "_validate_and_publish", blocking_validate)
+
+    async def exercise():
+        transport = httpx.ASGITransport(app=app)
+        watchdog = threading.Timer(1.0, release_validation.set)
+        watchdog.start()
+        started = time.perf_counter()
+        try:
+            async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+                upload = asyncio.create_task(client.post(
+                    "/api/v1/jobs",
+                    files={"video": ("shop.mp4", encoded_three_frame_video.read_bytes(), "video/mp4")},
+                ))
+                while not entered_validation.is_set():
+                    await asyncio.sleep(0.01)
+                health = await client.get("/api/v1/health")
+                health_elapsed = time.perf_counter() - started
+                release_validation.set()
+                uploaded = await upload
+            return health, uploaded, health_elapsed
+        finally:
+            release_validation.set()
+            watchdog.cancel()
+            watchdog.join()
+
+    try:
+        health, uploaded, elapsed = asyncio.run(exercise())
+    finally:
+        app.state.database.engine.dispose()
+
+    assert health.status_code == 200
+    assert elapsed < 0.5
+    assert uploaded.status_code == 201

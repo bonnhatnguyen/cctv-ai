@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import AsyncIterable, BinaryIO, Callable
 from uuid import uuid4
 
+import anyio
 from fastapi import UploadFile
 from python_multipart import MultipartParser
 from python_multipart.multipart import MultipartParseError, parse_options_header
@@ -52,6 +53,34 @@ def _is_mp4_container(path: Path) -> bool:
     )
     formats = {item.strip() for item in completed.stdout.split(",")}
     return completed.returncode == 0 and "mp4" in formats
+
+
+def _open_private_upload(job_dir: Path, temporary: Path) -> BinaryIO:
+    job_dir.mkdir(parents=True, exist_ok=False)
+    return temporary.open("xb")
+
+
+def _write_chunks(target: BinaryIO, chunks: tuple[bytes, ...]) -> None:
+    for chunk in chunks:
+        if target.write(chunk) != len(chunk):
+            raise OSError("short upload write")
+
+
+def _finish_upload(target: BinaryIO) -> None:
+    target.flush()
+    os.fsync(target.fileno())
+    target.close()
+
+
+def _close_upload(target: BinaryIO) -> None:
+    try:
+        target.close()
+    except OSError:
+        pass
+
+
+def _remove_import_directory(job_dir: Path) -> None:
+    shutil.rmtree(job_dir, ignore_errors=True)
 
 
 class VideoStore:
@@ -138,10 +167,13 @@ class VideoStore:
         max_body_bytes = self.max_upload_bytes + overhead_allowance
         if content_length:
             try:
-                if int(content_length) > max_body_bytes:
-                    raise UploadTooLargeError()
+                declared_length = int(content_length)
             except ValueError as exc:
                 raise UnsupportedVideoError("invalid content length") from exc
+            if declared_length < 0:
+                raise UnsupportedVideoError("invalid content length")
+            if declared_length > max_body_bytes:
+                raise UploadTooLargeError()
 
         job_id = str(uuid4())
         job_dir = self.root / job_id
@@ -154,8 +186,11 @@ class VideoStore:
         disposition = b""
         part_count = 0
         completed = False
+        file_declared = False
         file_bytes = 0
         body_bytes = 0
+        pending_writes: list[bytes] = []
+        published = False
 
         def on_part_begin() -> None:
             nonlocal disposition, part_count
@@ -176,7 +211,7 @@ class VideoStore:
             current_header_value.clear()
 
         def on_headers_finished() -> None:
-            nonlocal original_name, target
+            nonlocal original_name, file_declared
             _kind, parameters = parse_options_header(disposition)
             field_name = parameters.get(b"name", b"").decode("utf-8", errors="replace")
             filename = parameters.get(b"filename")
@@ -185,17 +220,16 @@ class VideoStore:
             original_name = _safe_name(filename.decode("utf-8", errors="replace"))
             if Path(original_name).suffix.lower() != ".mp4":
                 raise UnsupportedVideoError("MP4 required")
-            job_dir.mkdir(parents=True, exist_ok=False)
-            target = temporary.open("xb")
+            file_declared = True
 
         def on_part_data(data: bytes, start: int, end: int) -> None:
             nonlocal file_bytes
-            if target is None:
+            if not file_declared:
                 raise UnsupportedVideoError("video file is unavailable")
             length = end - start
             if file_bytes + length > self.max_upload_bytes:
                 raise UploadTooLargeError()
-            target.write(data[start:end])
+            pending_writes.append(bytes(data[start:end]))
             file_bytes += length
 
         def on_part_end() -> None:
@@ -218,14 +252,39 @@ class VideoStore:
                 if body_bytes > max_body_bytes:
                     raise UploadTooLargeError()
                 parser.write(chunk)
+                if file_declared and target is None:
+                    target = await anyio.to_thread.run_sync(
+                        _open_private_upload,
+                        job_dir,
+                        temporary,
+                        abandon_on_cancel=False,
+                    )
+                if pending_writes:
+                    writes = tuple(pending_writes)
+                    pending_writes.clear()
+                    assert target is not None
+                    await anyio.to_thread.run_sync(
+                        _write_chunks,
+                        target,
+                        writes,
+                        abandon_on_cancel=False,
+                    )
             parser.finalize()
             if target is None or original_name is None or not completed or part_count != 1:
                 raise UnsupportedVideoError("incomplete multipart video")
-            target.flush()
-            os.fsync(target.fileno())
-            target.close()
+            await anyio.to_thread.run_sync(_finish_upload, target, abandon_on_cancel=False)
             target = None
-            return self._validate_and_publish(job_id, original_name, temporary, source, file_bytes)
+            imported = await anyio.to_thread.run_sync(
+                self._validate_and_publish,
+                job_id,
+                original_name,
+                temporary,
+                source,
+                file_bytes,
+                abandon_on_cancel=False,
+            )
+            published = True
+            return imported
         except (UploadTooLargeError, UnsupportedVideoError):
             raise
         except MultipartParseError as exc:
@@ -236,6 +295,8 @@ class VideoStore:
             raise ImportStorageError("unable to store video") from exc
         finally:
             if target is not None:
-                target.close()
-            if not source.is_file():
-                shutil.rmtree(job_dir, ignore_errors=True)
+                await anyio.to_thread.run_sync(_close_upload, target, abandon_on_cancel=False)
+            if not published:
+                await anyio.to_thread.run_sync(
+                    _remove_import_directory, job_dir, abandon_on_cancel=False
+                )

@@ -8,6 +8,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Callable
 
+import anyio
 from fastapi import FastAPI, HTTPException, Query, Request, status
 from fastapi.responses import FileResponse
 
@@ -76,11 +77,21 @@ def create_app(
                 request.headers.get("content-length"),
             )
             try:
-                return repository.create_imported(
-                    imported.id, imported.original_name, imported.source, imported.metadata
+                return await anyio.to_thread.run_sync(
+                    repository.create_imported,
+                    imported.id,
+                    imported.original_name,
+                    imported.source,
+                    imported.metadata,
+                    abandon_on_cancel=False,
                 )
             except Exception:
-                shutil.rmtree(imported.source.parent, ignore_errors=True)
+                await anyio.to_thread.run_sync(
+                    shutil.rmtree,
+                    imported.source.parent,
+                    True,
+                    abandon_on_cancel=False,
+                )
                 raise
         except UploadTooLargeError as exc:
             raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "tep_video_qua_lon") from exc
