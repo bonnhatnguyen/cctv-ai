@@ -190,6 +190,7 @@ def create_app(
         return {
             "service": "v1-person-tracking",
             "version": "1",
+            "instance_id": configured.instance_id,
             "ready": all(dependencies.values()) and all(assets.values()),
             "dependencies": dependencies,
             "assets": assets,

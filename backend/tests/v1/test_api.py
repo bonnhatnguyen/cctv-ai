@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import shutil
 import threading
 import time
@@ -178,6 +179,20 @@ def test_health_identifies_isolated_service_and_reports_completed_execution(api,
     assert payload["configured_device"] == "cpu"
     assert payload["last_completed_inference"]["actual_device"] == "cuda:0"
     assert "model_path" not in payload
+
+
+def test_health_reports_launcher_instance_without_exposing_project_path(tmp_path):
+    settings = V1Settings(
+        data_dir=tmp_path / "launcher-health",
+        instance_id="0f12ab34cd56ef78",
+    )
+    app = create_app(settings=settings, worker_factory=ControlledWorker)
+
+    with TestClient(app) as client:
+        payload = client.get("/api/v1/health").json()
+
+    assert payload["instance_id"] == "0f12ab34cd56ef78"
+    assert str(tmp_path) not in json.dumps(payload)
 
 
 def test_lifespan_releases_sqlite_file_handle_on_windows(tmp_path):

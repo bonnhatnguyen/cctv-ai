@@ -6,6 +6,7 @@ __pycache__/
 .env
 data/evidence/
 data/v1/
+data/v1-launcher/
 data/v1-task4-acceptance/
 backend/data/live/
 backend/*.pt

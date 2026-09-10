@@ -15,6 +15,7 @@ class V1Settings(BaseSettings):
     max_upload_bytes: int = 4 * 1024**3
     database_url: str | None = None
     progress_interval_seconds: float = 0.25
+    instance_id: str | None = None
 
     @property
     def effective_database_url(self) -> str:
