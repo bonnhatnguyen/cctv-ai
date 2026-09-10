@@ -146,7 +146,7 @@ Nguồn không browser-playable vẫn có bước-frame; preview liên tục dù
 local silent H.264 được kiểm tra cùng số frame/fps/SAR trước khi cho dùng.
 Preview lỗi hiển thị rõ; không đổi nguồn hay lén thay mốc thời gian.
 
-Clip có trạng thái chuẩn bị riêng `preparing|ready|failed` cho frame index và
+Clip có trạng thái chuẩn bị riêng `preparing|ready|failed|releasing|released` cho frame index và
 preview, không ghi đè JobStatus tracking V1. Backend dựng index/kiểm frame count
 trước ready; annotation UI chỉ mở khi ready. Preview có thể tái tạo từ nguồn,
 không dùng video đã vẽ box làm nguồn training. Lỗi chuẩn bị có retry rõ ràng.
@@ -231,10 +231,22 @@ cho retry, không xóa source và không cần distributed transaction. V2 khôn
 cung cấp xóa video; tombstone chỉ áp dụng nhãn. Source bị xóa ngoài ứng dụng
 thì clip unavailable, nhãn/lịch sử vẫn đọc và archive annotations-only được.
 
-SQLite annotation là nơi lưu chính thức, nằm trong `data/v2-annotations/`
+SQLite annotation là nơi lưu chính thức. Bổ sung sau audit plan M1: root mặc
+định là `resolved_v1_data_dir/annotations` (thông thường `data/v1/annotations/`),
+override tuyệt đối được kiểm binding về source data root. Mỗi DataDirectory
+có annotation DB/lock riêng; không dùng sibling chung theo parent. Root phải
 được Git-ignore trước khi có dữ liệu. JSON export là snapshot bất biến, không
 là DB thứ hai cần đồng bộ. Các cache frame và staging export ở cùng private
 root, không vào Git. Nhãn thật cũng là dữ liệu riêng tư, không chỉ video.
+
+Bổ sung vòng đời derived media sau audit plan M1: người dùng có thể giải phóng
+chunks/preview/cache được service tạo cho clip, giữ video nguồn, ROI, nhãn và
+lịch sử. State releasing chặn reader mới và đợi/đóng owned readers có giới hạn
+trước dọn; released cho phép chuẩn bị lại bằng source hash cũ. Release không
+đổi ngữ nghĩa ROI/nhãn và không hủy review; source đổi thì reprepare fail.
+Quota phải có thao tác thu hồi rõ ràng; không tự xóa source hoặc nhãn để giải
+phóng chỗ. Quy tắc này bổ sung quản lý tài nguyên M1, không mở tính năng xóa
+video đã bị loại khỏi V2.
 
 Lưu event cùng revision trong một transaction; UI có nút Lưu và trạng thái
 đang lưu/đã lưu/lỗi. Không báo đã lưu trước phản hồi server. Mọi mutation của
