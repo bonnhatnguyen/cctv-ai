@@ -42,7 +42,9 @@ giữ đúng phạm vi riêng tư đã duyệt.
 ## Xử lý video
 
 1. Xuất đoạn cần xử lý từ đầu ghi thành MP4 trên máy. Phiên bản đầu tiên không
-   nhận AVI/MKV/MOV, luồng trực tiếp hoặc URL.
+   nhận AVI/MKV/MOV, luồng trực tiếp hoặc URL. Video phải có frame timing cố
+   định (CFR) và cả chiều rộng lẫn chiều cao phải là số chẵn; video VFR hoặc có
+   kích thước lẻ bị từ chối rõ ràng ở bước đọc metadata.
 2. Chọn **Chọn video MP4**, hoặc kéo/thả đúng một MP4 vào vùng chọn. Trang chỉ
    hiện tên và dung lượng cục bộ trước khi máy chủ xác nhận metadata.
 3. Kiểm tra kích thước, thời lượng và codec mà máy chủ đọc được.
@@ -51,7 +53,9 @@ giữ đúng phạm vi riêng tư đã duyệt.
    trong giai đoạn theo dõi chỉ là ước tính và không lên 100% trước khi đầu ra
    được kiểm tra.
 5. Khi hoàn tất, phát/tua riêng **Video gốc** và **Video đã theo dõi**. Chọn
-   **Tải video kết quả** để lưu MP4 có khung và nhãn.
+   **Tải video kết quả** để lưu MP4 có khung và nhãn. Video kết quả là H.264
+   không có track âm thanh (silent annotated output); V1 không sao chép âm
+   thanh từ tệp nguồn.
 
 Tệp nguồn được giữ nguyên trong vùng dữ liệu riêng của job, kể cả khi xử lý
 thất bại hoặc bị gián đoạn. Không xóa `data\v1` khi còn cần nguồn, kết quả hoặc
@@ -74,8 +78,9 @@ nhiều ID trong clip; không dùng ID này để kết luận danh tính hay h�
   powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-v1.ps1 -Stop
   ```
 
-  Lệnh kiểm tra state, instance, service identity và command line trước khi
-  dừng; nó từ chối dừng PID không khớp.
+  Lệnh kiểm tra state, instance, service identity, thời điểm tạo process,
+  executable, command line chính xác và quan hệ với listener trước khi dừng;
+  nó từ chối dừng PID không khớp hoặc PID đã được process khác tái sử dụng.
 - Nếu máy bị tắt hoặc backend bị kết thúc khi job đang chạy, lần khởi động sau
   đánh dấu job đó `xu_ly_bi_gian_doan` thay vì báo hoàn tất giả. Tệp nguồn vẫn
   còn để người vận hành chọn/xử lý lại.

@@ -4,6 +4,8 @@ const apiTarget = process.env.V1_BACKEND_PORT
   ? `http://127.0.0.1:${process.env.V1_BACKEND_PORT}`
   : "http://127.0.0.1:8000";
 const instanceId = process.env.V1_TRACKING_INSTANCE_ID ?? "unmanaged";
+const backendUrl = process.env.V1_BACKEND_URL ?? apiTarget;
+const backendPort = Number(new URL(backendUrl).port);
 
 const runtimeIdentity = {
   name: "v1-runtime-identity",
@@ -17,6 +19,8 @@ const runtimeIdentity = {
         version: "1",
         network: "loopback-only",
         instance_id: instanceId,
+        backend_url: backendUrl,
+        backend_port: backendPort,
       }));
     });
   },

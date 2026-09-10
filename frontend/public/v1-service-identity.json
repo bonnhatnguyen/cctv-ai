@@ -1,5 +1,0 @@
-{
-  "service": "v1-person-tracking-ui",
-  "version": "1",
-  "network": "loopback-only"
-}

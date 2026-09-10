@@ -206,3 +206,73 @@ Ultralytics YOLO26/framework/default weights are AGPL-3.0 by default; a
 compatible license or Ultralytics Enterprise license is required for uses that
 are not compatible with AGPL-3.0. The operator notice is retained in
 `docs/v1-user-guide.md`.
+
+### Task 5 review hardening — 2026-09-10
+
+Review base: `8566a40`. Fix head: the commit containing this section.
+
+The first behavioral launcher run against the reviewed implementation was RED:
+four lifecycle cases failed because the launcher did not yet accept isolated
+state/data/port inputs. A later focused RED exposed the remaining process-start
+window exactly:
+
+```text
+.\.venv\Scripts\python.exe -m pytest backend\tests\v1\test_launcher.py -q -k starting_child_ownership
+1 failed, 6 deselected in 7.78s
+AssertionError: observed_backend is None
+```
+
+Launcher state is now schema 2 and records a GUID generation plus exact
+launcher/listener PID, parent PID, creation time, executable and command line.
+It verifies the project-root invocation and loopback listener ancestry before
+reuse or termination. State moves atomically from `starting` to `ready` for
+each service. A failed launch removes only services created by that invocation;
+a previously verified backend is retained. Termination is checked before the
+corresponding state entry is removed. A PID reused by an unrelated process is
+rejected and the state file is retained unchanged.
+
+Frontend runtime identity now includes the selected `backend_url` and
+`backend_port`. Reuse additionally requires a successful backend health request
+through the frontend `/api` proxy. A stale frontend is replaced only after its
+full launcher ownership is verified. The obsolete static identity JSON was
+removed so the dynamic, target-aware endpoint is the single launcher identity.
+
+Fresh behavior and gate verification:
+
+```text
+.\.venv\Scripts\python.exe -m pytest backend\tests\v1\test_launcher.py -q
+7 passed in 103.85s
+
+.\.venv\Scripts\python.exe -m pytest backend\tests\v1 -q
+59 passed, 2 dependency deprecation warnings in 113.15s
+
+.\.venv\Scripts\python.exe -m pytest backend\tests -q
+78 passed, 2 dependency deprecation warnings in 113.44s
+
+cd frontend
+pnpm test -- --run
+2 files passed; 13 tests passed in 1.18s
+
+pnpm build
+19 modules transformed; exit 0
+
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-v1.ps1 -CheckOnly
+project .venv Python, pnpm, imports, model, FFmpeg/ffprobe and Vite verified; exit 0
+
+PowerShell parser
+PASS
+```
+
+The seven launcher tests use temporary state/data directories and dynamically
+reserved loopback blocks at port 18000 or above. They cover launch/repeat/stop,
+proxy-target identity, replacement of an owned stale frontend, unrelated Vite
+PID reuse, partial-start rollback, preservation of a reused backend, and atomic
+`starting` ownership. They clean up only their own recorded process trees. The
+existing user-facing listeners on 8000/5173/8001/5174 were not stopped or used
+by these tests. No remote, publish, cloud, telemetry or media transmission was
+performed. Existing RTX/browser/video evidence above remains unchanged because
+this fix round changed only launcher lifecycle/identity and operator docs.
+
+The user guide now states the actual input limits (VFR and odd dimensions are
+rejected) and that annotated H.264 output is silent. Its Ultralytics
+AGPL-3.0/Enterprise licensing notice remains explicit.
