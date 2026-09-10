@@ -156,6 +156,66 @@ describe("luồng theo dõi người từ MP4", () => {
     expect(await screen.findByRole("button", { name: "Bắt đầu theo dõi người" })).toBeEnabled();
   });
 
+  it("keeps the imported video when an invalid replacement is selected", async () => {
+    render(<App />);
+    selectMp4("video-a.mp4");
+    await finishImport(job("imported", "imported", {
+      original_name: "video-a.mp4",
+    }));
+
+    const invalid = new File(["not video"], "ghi-chu-b.txt", { type: "text/plain" });
+    fireEvent.change(screen.getByLabelText("Chọn video MP4", { selector: "input" }), {
+      target: { files: [invalid] },
+    });
+
+    expect(screen.getByText("video-a.mp4")).toBeVisible();
+    expect(screen.queryByText("ghi-chu-b.txt")).not.toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("Video đã nhập vẫn được giữ nguyên");
+    expect(screen.getByRole("button", { name: "Bắt đầu theo dõi người" })).toBeEnabled();
+    expect(localStorage.getItem("v1-active-tracking-job")).toBe("job-1");
+    expect(FakeXMLHttpRequest.instances).toHaveLength(1);
+  });
+
+  it("invalidates a pending restore when an invalid replacement is selected", async () => {
+    localStorage.setItem("v1-active-tracking-job", "job-old");
+    let releaseRestore!: (response: Response) => void;
+    const fetchMock = vi.mocked(fetch).mockReturnValue(
+      new Promise<Response>((resolve) => { releaseRestore = resolve; }),
+    );
+    render(<App />);
+    const restoreSignal = (fetchMock.mock.calls[0][1] as RequestInit).signal!;
+    const invalid = new File(["not video"], "ghi-chu.txt", { type: "text/plain" });
+
+    fireEvent.change(screen.getByLabelText("Chọn video MP4", { selector: "input" }), {
+      target: { files: [invalid] },
+    });
+
+    expect(restoreSignal.aborted).toBe(true);
+    expect(screen.queryByText("Đang khôi phục phiên xử lý trước…")).not.toBeInTheDocument();
+    expect(localStorage.getItem("v1-active-tracking-job")).toBeNull();
+    await act(async () => releaseRestore(jsonResponse(job("ready", "ready", {
+      id: "job-old",
+      original_name: "video-cu.mp4",
+      result_url: "/api/v1/jobs/job-old/result",
+    }))));
+    expect(screen.queryByText("video-cu.mp4")).not.toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("Vui lòng chọn tệp MP4");
+  });
+
+  it("clears the native picker value so the same MP4 can be selected again", () => {
+    render(<App />);
+    const input = screen.getByLabelText("Chọn video MP4", { selector: "input" }) as HTMLInputElement;
+    Object.defineProperty(input, "value", {
+      configurable: true,
+      value: "C:\\fakepath\\cua-hang.mp4",
+      writable: true,
+    });
+
+    fireEvent.click(input);
+
+    expect(input.value).toBe("");
+  });
+
   it("requires an explicit start and prevents duplicate start submissions", async () => {
     let releaseStart!: (response: Response) => void;
     const startResponse = new Promise<Response>((resolve) => { releaseStart = resolve; });

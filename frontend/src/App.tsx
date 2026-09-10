@@ -114,8 +114,14 @@ export default function App() {
   const beginImport = (file: File) => {
     if (uploadBusy.current || startBusy.current) return;
     if (!file.name.toLocaleLowerCase().endsWith(".mp4")) {
-      setLocalVideo({ file, name: file.name, size: file.size });
-      setError("Vui lòng chọn tệp MP4.");
+      operation.current?.abort();
+      operation.current = null;
+      generation.current += 1;
+      setRestoring(false);
+      if (!job) localStorage.removeItem(ACTIVE_JOB_KEY);
+      setError(job
+        ? "Tệp mới không phải MP4. Video đã nhập vẫn được giữ nguyên."
+        : "Vui lòng chọn tệp MP4.");
       return;
     }
 

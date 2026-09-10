@@ -36,6 +36,7 @@ section { margin-top: 16px; padding: 30px; border: 1px solid #d9e4dd; border-rad
 
 .drop-zone { display: flex; min-height: 180px; padding: 28px; align-items: center; justify-content: center; flex-direction: column; gap: 8px; border: 1.5px dashed #8eaa9b; border-radius: 12px; color: #234b38; background: #f7faf8; cursor: pointer; transition: border-color .18s, background .18s; }
 .drop-zone:hover { border-color: #277151; background: #f0f8f3; }
+.drop-zone:focus-within { border-color: #185f3e; outline: 3px solid rgba(39, 113, 81, .28); outline-offset: 3px; }
 .drop-zone.disabled { opacity: .65; cursor: not-allowed; }
 .drop-zone input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 .drop-zone small { color: #718079; }

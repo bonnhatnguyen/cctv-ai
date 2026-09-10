@@ -77,6 +77,7 @@ export function VideoImport({
           accept="video/mp4,.mp4"
           aria-label="Chọn video MP4"
           disabled={actionsLocked}
+          onClick={(event) => { event.currentTarget.value = ""; }}
           onChange={(event) => chooseFile(event.target.files)}
         />
         <span className="upload-icon" aria-hidden="true">↑</span>
