@@ -248,16 +248,40 @@ function Complete-ServiceRecord([object]$Record) {
 
 function Assert-ExpectedInvocation([object]$Record, [string]$Kind) {
     $command = [string]$Record.launcher.command
-    $requiredTokens = if ($Kind -eq "backend") {
+    $currentTokens = if ($Kind -eq "backend") {
         @("-m uvicorn", "app.v1.api:app", "--app-dir", $BackendDirectory, "--host 127.0.0.1", "--port $($Record.port)")
     }
     else {
         @("exec vite", $FrontendDirectory, (Join-Path $FrontendDirectory "vite.config.ts"), "--host 127.0.0.1", "--port $($Record.port)", "--strictPort")
     }
-    foreach ($token in $requiredTokens) {
+    $currentMatches = $true
+    foreach ($token in $currentTokens) {
         if ($command.IndexOf($token, [System.StringComparison]::OrdinalIgnoreCase) -lt 0) {
-            throw "Refusing to stop or reuse the $Kind because its exact project-root invocation does not match."
+            $currentMatches = $false
+            break
         }
+    }
+    if ($currentMatches) { return }
+
+    # One-time compatibility with the previous launcher format. Its command
+    # omitted explicit project arguments, so require the exact legacy command,
+    # a process snapshot rooted in this project, and the verified listener.
+    $listenerCommand = if ($null -ne $Record.listener) { [string]$Record.listener.command } else { "" }
+    $identityText = "$command`n$listenerCommand`n$([string]$Record.launcher.executable)"
+    $legacyTokens = if ($Kind -eq "backend") {
+        @("-m uvicorn", "app.v1.api:app", "--host 127.0.0.1", "--port $($Record.port)")
+    }
+    else {
+        @("exec vite", "--host 127.0.0.1", "--port $($Record.port)", "--strictPort")
+    }
+    $legacyMatches = $identityText.IndexOf($ProjectRoot, [System.StringComparison]::OrdinalIgnoreCase) -ge 0
+    foreach ($token in $legacyTokens) {
+        if ($command.IndexOf($token, [System.StringComparison]::OrdinalIgnoreCase) -lt 0) {
+            $legacyMatches = $false
+        }
+    }
+    if (-not $legacyMatches) {
+        throw "Refusing to stop or reuse the $Kind because its exact project-root invocation does not match."
     }
 }
 
@@ -346,10 +370,82 @@ function New-EmptyState {
     }
 }
 
+function Convert-LegacyState([object]$Legacy) {
+    $required = @("project_root", "instance_id", "backend_pid", "frontend_pid", "backend_port", "frontend_port", "backend_url", "frontend_url")
+    foreach ($field in $required) {
+        if ($field -notin $Legacy.PSObject.Properties.Name) {
+            throw "Existing launcher state cannot be verified. It was not overwritten or used to stop a process."
+        }
+    }
+    if ($Legacy.project_root -cne $ProjectRoot -or $Legacy.instance_id -cne $InstanceId) {
+        throw "Existing launcher state cannot be verified. It was not overwritten or used to stop a process."
+    }
+
+    $legacyBackendPort = [int]$Legacy.backend_port
+    $legacyFrontendPort = [int]$Legacy.frontend_port
+    if ($Legacy.backend_url -cne "http://127.0.0.1:$legacyBackendPort" -or
+        $Legacy.frontend_url -cne "http://127.0.0.1:$legacyFrontendPort") {
+        throw "Existing launcher state cannot be verified. It was not overwritten or used to stop a process."
+    }
+
+    $backendLauncher = Get-ProcessSnapshot ([int]$Legacy.backend_pid)
+    $frontendLauncher = Get-ProcessSnapshot ([int]$Legacy.frontend_pid)
+    $backendListenerPid = Get-ListenerPid $legacyBackendPort
+    $frontendListenerPid = Get-ListenerPid $legacyFrontendPort
+    if ($null -eq $backendLauncher -or $null -eq $frontendLauncher -or
+        $null -eq $backendListenerPid -or $null -eq $frontendListenerPid -or
+        -not (Test-Descendant $backendListenerPid ([int]$Legacy.backend_pid)) -or
+        -not (Test-Descendant $frontendListenerPid ([int]$Legacy.frontend_pid))) {
+        throw "Existing launcher state cannot be verified. It was not overwritten or used to stop a process."
+    }
+    $backendCommand = [string]$backendLauncher.command
+    $frontendCommand = [string]$frontendLauncher.command
+    foreach ($token in @("-m uvicorn", "app.v1.api:app", "--host 127.0.0.1", "--port $legacyBackendPort")) {
+        if ($backendCommand.IndexOf($token, [System.StringComparison]::OrdinalIgnoreCase) -lt 0) {
+            throw "Existing launcher state cannot be verified. It was not overwritten or used to stop a process."
+        }
+    }
+    foreach ($token in @("exec vite", "--host 127.0.0.1", "--port $legacyFrontendPort", "--strictPort")) {
+        if ($frontendCommand.IndexOf($token, [System.StringComparison]::OrdinalIgnoreCase) -lt 0) {
+            throw "Existing launcher state cannot be verified. It was not overwritten or used to stop a process."
+        }
+    }
+
+    $script:BackendPort = $legacyBackendPort
+    $script:FrontendPort = $legacyFrontendPort
+    Update-ServiceUrls
+    if (-not (Test-BackendReady) -or -not (Test-FrontendReady)) {
+        throw "Existing launcher state cannot be verified. It was not overwritten or used to stop a process."
+    }
+
+    $backendListener = Get-ProcessSnapshot $backendListenerPid
+    $frontendListener = Get-ProcessSnapshot $frontendListenerPid
+    if ($null -eq $backendListener -or $null -eq $frontendListener) {
+        throw "Existing launcher state cannot be verified. It was not overwritten or used to stop a process."
+    }
+    $migrated = New-EmptyState
+    $migrated.backend = [pscustomobject][ordered]@{
+        kind = "backend"; phase = "ready"; generation = [Guid]::NewGuid().ToString("n")
+        project_root = $ProjectRoot; port = $legacyBackendPort; url = $BackendUrl; backend_url = ""
+        launcher = $backendLauncher; listener = $backendListener
+    }
+    $migrated.frontend = [pscustomobject][ordered]@{
+        kind = "frontend"; phase = "ready"; generation = [Guid]::NewGuid().ToString("n")
+        project_root = $ProjectRoot; port = $legacyFrontendPort; url = $FrontendUrl; backend_url = $BackendUrl
+        launcher = $frontendLauncher; listener = $frontendListener
+    }
+    Write-OwnedState $migrated
+    Write-LauncherLog "Safely adopted the verified running V1 services from the previous launcher format."
+    return $migrated
+}
+
 function Read-OwnedState {
     if (-not (Test-Path -LiteralPath $StatePath -PathType Leaf)) { return New-EmptyState }
     $state = Get-Content -LiteralPath $StatePath -Raw | ConvertFrom-Json
-    if ("schema_version" -notin $state.PSObject.Properties.Name -or $state.schema_version -ne 2 -or
+    if ("schema_version" -notin $state.PSObject.Properties.Name) {
+        return Convert-LegacyState $state
+    }
+    if ($state.schema_version -ne 2 -or
         $state.project_root -cne $ProjectRoot -or $state.instance_id -cne $InstanceId) {
         throw "Existing launcher state cannot be verified. It was not overwritten or used to stop a process."
     }
@@ -423,6 +519,20 @@ try {
     New-Item -ItemType Directory -Path $LauncherDirectory -Force | Out-Null
     $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
     $state = Read-OwnedState
+
+    # Validate both records before mutating either. False means all recorded
+    # processes and the listener are absent; live mismatches still throw.
+    $deadComponents = @()
+    foreach ($kind in @("backend", "frontend")) {
+        if ($null -ne $state.$kind -and -not (Assert-OwnedService $state.$kind $kind)) {
+            $deadComponents += $kind
+        }
+    }
+    foreach ($kind in $deadComponents) {
+        Write-LauncherLog "Clearing fully absent launcher-owned $kind record after interruption."
+        $state.$kind = $null
+        Write-OwnedState $state
+    }
 
     if ($null -ne $state.backend) {
         if ($state.backend.phase -eq "starting") {

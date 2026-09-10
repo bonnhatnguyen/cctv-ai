@@ -60,6 +60,13 @@ def test_probe_video_reports_rational_metadata(tmp_path):
     assert (metadata.fps_num, metadata.fps_den) == (25, 1)
     assert metadata.frame_count_estimate == 3
     assert metadata.codec == "mpeg4"
+    assert metadata.preview_supported is False
+
+
+def test_h264_yuv420p_source_preview_is_supported(encoded_three_frame_video):
+    from app.v1.media import probe_video
+
+    assert probe_video(encoded_three_frame_video).preview_supported is True
 
 
 def test_probe_video_rejects_odd_dimensions(tmp_path, monkeypatch):

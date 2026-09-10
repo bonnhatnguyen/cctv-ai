@@ -107,6 +107,63 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+@pytest.mark.parametrize("dead", [("backend",), ("frontend",), ("backend", "frontend")])
+def test_restart_recovers_fully_dead_recorded_components(tmp_path, dead):
+    base = _free_port_block()
+    state_dir = tmp_path / "state"
+    first = _run_launcher(state_dir, base, base + 1)
+    try:
+        assert first.returncode == 0, first.stdout + first.stderr
+        state_path = state_dir / "launcher-state.json"
+        before = json.loads(state_path.read_text("utf-8-sig"))
+        for kind in dead:
+            result = subprocess.run(
+                ["taskkill.exe", "/PID", str(before[kind]["launcher"]["pid"]), "/T", "/F"],
+                capture_output=True,
+            )
+            assert result.returncode == 0
+            assert _wait_port_closed(before[kind]["port"])
+        restarted = _run_launcher(state_dir, base, base + 1)
+        assert restarted.returncode == 0, restarted.stdout + restarted.stderr
+        after = json.loads(state_path.read_text("utf-8-sig"))
+        for kind in ("backend", "frontend"):
+            assert (after[kind]["generation"] != before[kind]["generation"]) == (kind in dead)
+        identity = httpx.get(f"http://127.0.0.1:{base + 1}/__v1_identity").json()
+        assert identity["backend_url"] == f"http://127.0.0.1:{base}"
+        assert httpx.get(f"http://127.0.0.1:{base + 1}/api/v1/health").json()["instance_id"] == after["instance_id"]
+    finally:
+        stopped = _run_launcher(state_dir, base, base + 1, "-Stop")
+        assert stopped.returncode == 0, stopped.stdout + stopped.stderr
+
+
+@pytest.mark.parametrize("kind", ["backend", "frontend"])
+def test_dead_record_with_unrelated_live_listener_is_not_cleared(tmp_path, kind):
+    base = _free_port_block()
+    state_dir = tmp_path / "state"
+    first = _run_launcher(state_dir, base, base + 1)
+    occupied = socket.socket()
+    try:
+        assert first.returncode == 0, first.stdout + first.stderr
+        path = state_dir / "launcher-state.json"
+        before_bytes = path.read_bytes()
+        state = json.loads(before_bytes.decode("utf-8-sig"))
+        subprocess.run(
+            ["taskkill.exe", "/PID", str(state[kind]["launcher"]["pid"]), "/T", "/F"],
+            capture_output=True, check=True,
+        )
+        assert _wait_port_closed(state[kind]["port"])
+        occupied.bind(("127.0.0.1", state[kind]["port"]))
+        occupied.listen()
+        refused = _run_launcher(state_dir, base, base + 1)
+        assert refused.returncode != 0
+        assert path.read_bytes() == before_bytes
+        assert occupied.getsockname()[1] == state[kind]["port"]
+    finally:
+        occupied.close()
+        stopped = _run_launcher(state_dir, base, base + 1, "-Stop")
+        assert stopped.returncode == 0, stopped.stdout + stopped.stderr
+
+
 def test_launcher_preflight_resolves_project_runtime_and_dependencies(tmp_path):
     assert Path(POWERSHELL or "").name.lower() == "powershell.exe"
     assert "powershell.exe" in (ROOT / "start-v1.bat").read_text(

@@ -6,6 +6,7 @@ import json
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Callable
 
 from pydantic import BaseModel
 from sqlalchemy import Float, Integer, String, Text, select, update
@@ -230,8 +231,11 @@ class JobRepository:
             )
             session.commit()
 
-    def recover(self) -> list[str]:
+    def recover(self, on_interrupted: Callable[[PrivateJob], None] | None = None) -> list[str]:
         with self._sessions() as session:
+            if on_interrupted is not None:
+                for record in session.scalars(select(JobRecord).where(JobRecord.status == JobStatus.PROCESSING)):
+                    on_interrupted(PrivateJob(record.id, JobStatus(record.status), record.source_path, record.output_path))
             session.execute(
                 update(JobRecord)
                 .where(JobRecord.status == JobStatus.PROCESSING)

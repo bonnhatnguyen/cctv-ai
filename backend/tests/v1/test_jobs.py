@@ -149,6 +149,49 @@ def test_restart_marks_interrupted_processing_failed_and_recovers_queued_once(
     assert calls == ["queued"]
 
 
+def test_restart_removes_only_private_temporary_files_of_interrupted_jobs(
+    repository, encoded_three_frame_video, tmp_path
+):
+    for job_id in ("interrupted", "imported"):
+        source = tmp_path / job_id / "source.mp4"
+        source.parent.mkdir()
+        shutil.copyfile(encoded_three_frame_video, source)
+        _import_job(repository, source, job_id)
+        for name in ("annotated.tmp.mp4", "tracking.tmp.evidence.jsonl",
+                     "annotated.mp4", "tracking.evidence.jsonl", "other.tmp"):
+            (source.parent / name).write_bytes(b"preserve unless private interrupted temp")
+    repository.enqueue("interrupted")
+    repository.mark_processing("interrupted")
+    worker = TrackingWorker(repository, tmp_path, "model.pt", "cpu", 960)
+    worker.start()
+    worker.stop()
+    for name in ("annotated.tmp.mp4", "tracking.tmp.evidence.jsonl"):
+        assert not (tmp_path / "interrupted" / name).exists()
+        assert (tmp_path / "imported" / name).is_file()
+    for name in ("source.mp4", "annotated.mp4", "tracking.evidence.jsonl", "other.tmp"):
+        assert (tmp_path / "interrupted" / name).is_file()
+    assert (tmp_path / "interrupted" / "source.mp4").read_bytes() == encoded_three_frame_video.read_bytes()
+    assert repository.get("interrupted").failure_code == "xu_ly_bi_gian_doan"
+
+
+def test_restart_does_not_clean_persisted_paths_outside_exact_job_directory(
+    repository, encoded_three_frame_video, tmp_path
+):
+    source = tmp_path / "unrelated" / "source.mp4"
+    source.parent.mkdir()
+    shutil.copyfile(encoded_three_frame_video, source)
+    _import_job(repository, source, "job-1")
+    repository.enqueue("job-1")
+    repository.mark_processing("job-1")
+    temporary = source.parent / "annotated.tmp.mp4"
+    temporary.write_bytes(b"unrelated")
+    worker = TrackingWorker(repository, tmp_path / "owned-root", "model.pt", "cpu", 960)
+    worker.start()
+    worker.stop()
+    assert temporary.read_bytes() == b"unrelated"
+    assert repository.get("job-1").failure_code == "xu_ly_bi_gian_doan"
+
+
 def test_submit_is_idempotent_for_active_jobs_and_rejects_terminal_or_stopped(
     repository, encoded_three_frame_video, tmp_path
 ):

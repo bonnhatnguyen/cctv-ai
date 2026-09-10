@@ -141,7 +141,7 @@ def probe_video(path: Path) -> VideoMetadata:
         fps_den=frame_rate.denominator,
         frame_count_estimate=frame_count,
         codec=str(stream.get("codec_name") or "unknown"),
-        preview_supported=True,
+        preview_supported=stream.get("codec_name") == "h264" and stream.get("pix_fmt") == "yuv420p",
         sample_aspect_ratio=str(sar),
     )
 

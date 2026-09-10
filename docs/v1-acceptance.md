@@ -11,10 +11,10 @@ and no recording was transmitted outside loopback. Private artifacts under
 | Task | Base | Head | Gate |
 |---|---|---|---|
 | 1 — first real tracking video | `3ad9b2219ee45456827a61fdb27f73c476452f9c` | `087b5fa740356fe152cafff50f402d827963d8c3` | PASS |
-| 2 — media validation/playback | `087b5fa740356fe152cafff50f402d827963d8c3` | `fc72b80c481cec24514458b9f050363963abcc41` | PASS; multi-clip continuity coverage pending |
+| 2 — media validation/playback | `087b5fa740356fe152cafff50f402d827963d8c3` | `fc72b80c481cec24514458b9f050363963abcc41` | PASS; multi-clip continuity assessed below |
 | 3 — local import/job API | `fc72b80c481cec24514458b9f050363963abcc41` | `2f4835acebf720e3a8cf24bbb8b2c9407406ccda` | PASS |
 | 4 — focused Vietnamese UI | `2f4835acebf720e3a8cf24bbb8b2c9407406ccda` | `5c52882b218bb4b1a8210ab819e687cf9d1ccbdd` | PASS |
-| 5 — verified local launcher | `5c52882b218bb4b1a8210ab819e687cf9d1ccbdd` | `84a5528f1d748c4b87079ace173def0fd641337e` | PASS for startup/workflow/recovery; continuity judgments for clips A/B remain pending |
+| 5 — verified local launcher | `5c52882b218bb4b1a8210ab819e687cf9d1ccbdd` | current branch | PASS for startup/workflow/recovery and recorded continuity assessment |
 
 ## Task 1
 
@@ -57,9 +57,8 @@ PYTHONPATH=backend .venv\Scripts\python.exe -m pytest backend/tests -q
 The 15-second output passed full browser playback and explicit Range-backed
 seeks at 0, 7.5 and 14.5 seconds. Two additional retained outputs A/B fully
 decoded with original resolution and playable H.264/yuv420p. Their contact
-sheets/JSONL demonstrate real boxes and IDs, but do not provide a complete
-frame-by-frame visible-miss/switch/exit-and-re-entry annotation. That
-continuity assessment remains pending and is not claimed as passed.
+sheets/JSONL demonstrate real boxes and IDs. The final continuity assessment
+and limitations are recorded in the final section of this document.
 
 ## Task 3
 
@@ -331,3 +330,62 @@ Lifecycle tests again used only temporary state/data and loopback ports at
 18000 or above. Existing user-facing listeners on 8000/5173/8001/5174 were not
 stopped or reused. No remote, publish, cloud, telemetry or media transmission
 occurred; the prior real RTX/browser/video evidence remains unchanged.
+
+### Final V1 hardening and continuity assessment
+
+The final audit found and fixed launcher recovery after a fully dead recorded
+backend, frontend, or both. The launcher validates both ownership records before
+changing state, clears only a component whose recorded processes and listener
+are all absent, and refuses a dead record when an unrelated listener occupies
+its port. The existing user-facing 8001/5174 pair was safely adopted from the
+previous launcher state format by verifying process ancestry, project identity,
+loopback service identity and frontend-to-backend proxy identity. The desktop
+shortcut then opened the verified `http://127.0.0.1:5174/` V1 page.
+
+Interrupted worker recovery now removes only the two worker-owned temporary
+files inside the exact persisted job directory. Source and completed artifacts
+are not removed. Source preview support is reported conservatively as H.264
+plus yuv420p; the UI falls back to an unsupported-preview message after an
+actual player error and labels CPU execution as diagnostic fallback.
+
+Fresh final automated verification:
+
+```text
+PYTHONPATH=backend .venv\Scripts\python.exe -m pytest backend/tests -q
+81 passed, 2 dependency deprecation warnings
+
+cd frontend
+pnpm exec vitest run
+3 files passed; 15 tests passed
+
+pnpm run build
+19 modules transformed; exit 0
+
+PYTHONPATH=backend .venv\Scripts\python.exe -m pytest \
+  backend/tests/v1/test_launcher.py backend/tests/v1/test_jobs.py \
+  backend/tests/v1/test_media.py -q
+33 passed in 231.22s
+```
+
+Continuity was reviewed from every JSONL frame plus sampled annotated contact
+sheets in `data/evidence/continuity-audit/`:
+
+- Baseline clip: the preselected fully visible target remains the same ID for
+  all 125/125 evaluated frames, with no switch or loss over 0.5 seconds. This
+  remains the V1 accuracy gate and passes.
+- Clip A: the navy-shirt target is ID 12 continuously from frame 271 through
+  750 except frames 269–270 before the evaluated run. The black/red target has
+  short detection losses and leaves without a reliable full-body box.
+- Clip B: the purple-shirt target is ID 1 through frame 109 and is assigned ID
+  34 for frames 108–119 near its downward exit, an observed within-view switch.
+  The black/red target is heavily cropped/occluded beside the right table and
+  has no ID for frames 162–357 (196 frames, about 7.84 seconds), then is detected
+  again as a new local ID. These are YOLO26n person-detection limitations, not
+  hidden as tracker success.
+
+A controlled 1920 inference-size rerun did not improve this footage and reduced
+detections; a 1280 rerun removed the purple target's short ID switch but missed
+more of the cropped black/red target. The accepted V1 therefore retains the
+tested 960 setting instead of trading one clip-specific failure for another.
+V1 passes its scoped gate for clearly visible people, while cropped, strongly
+occluded or edge-only people remain a documented limitation.

@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Callable
 
 from .contracts import Progress, RunOptions, Stage
-from .jobs import JobRepository, JobView
+from .jobs import JobRepository, JobView, PrivateJob
 from .pipeline import process_video
 
 
@@ -57,13 +57,28 @@ class TrackingWorker:
                 return
             self._stop.clear()
             self._accepting = True
-            recovered = self._repository.recover()
+            recovered = self._repository.recover(self._clean_interrupted_temporaries)
             for job_id in recovered:
                 if job_id not in self._scheduled:
                     self._scheduled.add(job_id)
                     self._queue.put(job_id)
             self._thread = threading.Thread(target=self._run, name="v1-tracking-worker", daemon=True)
             self._thread.start()
+
+    def _clean_interrupted_temporaries(self, job: PrivateJob) -> None:
+        root = self._data_root.resolve()
+        directory = root / job.id
+        # Never follow a redirected directory or a persisted path outside the
+        # exact job directory. Only these two worker-owned names are disposable.
+        if directory.parent != root or directory.resolve() != directory:
+            return
+        if (Path(job.source_path) != directory / "source.mp4" or
+                Path(job.output_path) != directory / "annotated.mp4"):
+            return
+        for name in ("annotated.tmp.mp4", "tracking.tmp.evidence.jsonl"):
+            path = directory / name
+            if path.is_file() and not path.is_symlink():
+                self._safe_remove(path)
 
     def stop(self) -> None:
         with self._lock:

@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { JobView, resultDownloadUrl, TrackingStage } from "./trackingApi";
 
 const stageLabels: Record<TrackingStage, string> = {
@@ -18,6 +18,7 @@ function number(value: number, maximumFractionDigits = 1): string {
 
 export function TrackingResult({ job }: { job: JobView }) {
   const resultVideo = useRef<HTMLVideoElement>(null);
+  const [failedSource, setFailedSource] = useState<string | null>(null);
   const summary = job.summary;
 
   if (job.status === "imported") return null;
@@ -78,8 +79,9 @@ export function TrackingResult({ job }: { job: JobView }) {
       <div className="video-grid">
         <figure>
           <figcaption>Video gốc</figcaption>
-          {job.metadata.preview_supported ? (
-            <video aria-label="Video gốc" controls preload="metadata" src={job.source_url} />
+          {job.metadata.preview_supported && failedSource !== job.source_url ? (
+            <video key={job.source_url} aria-label="Video gốc" controls preload="metadata" src={job.source_url}
+              onError={() => setFailedSource(job.source_url)} />
           ) : (
             <p className="preview-note">Trình duyệt không hỗ trợ xem trước video gốc này.</p>
           )}
@@ -96,6 +98,9 @@ export function TrackingResult({ job }: { job: JobView }) {
 
       <div className="metrics">
         <h3>Số liệu đo được</h3>
+        {summary.actual_device === "cpu" && (
+          <p className="preview-note">CPU là chế độ dự phòng để chẩn đoán, xử lý chậm hơn CUDA.</p>
+        )}
         <dl>
           <div><dt>Thiết bị thực tế</dt><dd>{summary.actual_device} · {summary.device_name}</dd></div>
           <div><dt>Khung hình đã xử lý</dt><dd>{number(summary.processed_frames, 0)}</dd></div>
