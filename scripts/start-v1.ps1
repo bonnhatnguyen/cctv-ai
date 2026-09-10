@@ -360,12 +360,19 @@ function Write-OwnedState([object]$State) {
     New-Item -ItemType Directory -Path $LauncherDirectory -Force | Out-Null
     $State.updated_at = [DateTime]::UtcNow.ToString("o")
     $temporary = Join-Path $LauncherDirectory ("launcher-state.{0}.tmp" -f [Guid]::NewGuid().ToString("n"))
+    $backup = Join-Path $LauncherDirectory ("launcher-state.{0}.backup" -f [Guid]::NewGuid().ToString("n"))
     try {
         $State | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $temporary -Encoding UTF8
-        [System.IO.File]::Move($temporary, $StatePath, $true)
+        if ([System.IO.File]::Exists($StatePath)) {
+            [System.IO.File]::Replace($temporary, $StatePath, $backup, $true)
+        }
+        else {
+            [System.IO.File]::Move($temporary, $StatePath)
+        }
     }
     finally {
         Remove-Item -LiteralPath $temporary -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $backup -Force -ErrorAction SilentlyContinue
     }
 }
 

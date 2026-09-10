@@ -276,3 +276,58 @@ this fix round changed only launcher lifecycle/identity and operator docs.
 The user guide now states the actual input limits (VFR and odd dimensions are
 rejected) and that annotated H.264 output is silent. Its Ultralytics
 AGPL-3.0/Enterprise licensing notice remains explicit.
+
+### Task 5 review hardening round 2 — Windows PowerShell compatibility
+
+Review base: `bc1d92c`. Fix head: the commit containing this section.
+
+`start-v1.bat` invokes Windows `powershell.exe`, whose PowerShell 5.1 / .NET
+Framework runtime provides only the two-argument `System.IO.File.Move` overload.
+The previous three-argument call was therefore incompatible even though the
+newer `pwsh` runtime used by the original tests accepted it.
+
+The launcher behavior harness now resolves only `powershell.exe` and verifies
+that this is the runtime named by the batch launcher. The focused RED reproduced
+the actual double-click failure on Windows PowerShell 5.1.26100.9444:
+
+```text
+.\.venv\Scripts\python.exe -m pytest backend\tests\v1\test_launcher.py -q -k repeat_launch
+1 failed, 6 deselected in 11.09s
+V1 startup failed: Cannot find an overload for "Move" and the argument count: "3".
+```
+
+Atomic state writes now use same-directory temporary and backup files. Initial
+creation uses the PowerShell 5.1-compatible two-argument `File.Move`. When state
+already exists, four-argument `File.Replace` atomically swaps it while retaining
+the old state as a unique backup until the successful call returns; `finally`
+removes any temporary/backup remnants. There is no delete-before-move interval.
+The failed RED launch rolled back its isolated backend and left no launcher test
+process behind.
+
+Fresh Windows PowerShell 5.1 verification:
+
+```text
+.\.venv\Scripts\python.exe -m pytest backend\tests\v1\test_launcher.py -q
+7 passed in 124.12s
+
+.\.venv\Scripts\python.exe -m pytest backend\tests\v1 -q
+59 passed, 2 dependency deprecation warnings
+
+.\.venv\Scripts\python.exe -m pytest backend\tests -q
+78 passed, 2 dependency deprecation warnings in 135.50s
+
+cd frontend
+pnpm test -- --run
+2 files passed; 13 tests passed in 1.23s
+
+pnpm build
+19 modules transformed; exit 0
+
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-v1.ps1 -CheckOnly
+project .venv Python, pnpm, dependencies, model, FFmpeg/ffprobe and Vite verified; exit 0
+```
+
+Lifecycle tests again used only temporary state/data and loopback ports at
+18000 or above. Existing user-facing listeners on 8000/5173/8001/5174 were not
+stopped or reused. No remote, publish, cloud, telemetry or media transmission
+occurred; the prior real RTX/browser/video evidence remains unchanged.

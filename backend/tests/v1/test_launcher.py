@@ -15,7 +15,9 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[3]
 SCRIPT = ROOT / "scripts" / "start-v1.ps1"
-POWERSHELL = shutil.which("pwsh") or shutil.which("powershell")
+# start-v1.bat invokes Windows PowerShell, so lifecycle coverage must exercise
+# that exact compatibility surface rather than a newer PowerShell Core runtime.
+POWERSHELL = shutil.which("powershell.exe")
 
 
 def _free_port_block(count: int = 12) -> int:
@@ -106,6 +108,10 @@ pytestmark = pytest.mark.skipif(
 
 
 def test_launcher_preflight_resolves_project_runtime_and_dependencies(tmp_path):
+    assert Path(POWERSHELL or "").name.lower() == "powershell.exe"
+    assert "powershell.exe" in (ROOT / "start-v1.bat").read_text(
+        encoding="utf-8"
+    ).lower()
     base = _free_port_block()
     completed = _run_launcher(
         tmp_path / "state", base, base + 1, "-CheckOnly", timeout=60
@@ -139,6 +145,8 @@ def test_repeat_launch_reuses_only_owned_services_with_matching_proxy_target(tmp
         assert repeat.returncode == 0, repeat.stdout + repeat.stderr
         assert "Reusing verified V1 backend" in repeat.stdout
         assert "Reusing verified V1 frontend" in repeat.stdout
+        assert not list(state_dir.glob("launcher-state.*.tmp"))
+        assert not list(state_dir.glob("launcher-state.*.backup"))
     finally:
         stopped = _run_launcher(state_dir, base, base + 1, "-Stop")
         assert stopped.returncode == 0, stopped.stdout + stopped.stderr
