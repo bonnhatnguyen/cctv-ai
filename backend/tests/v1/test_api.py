@@ -381,3 +381,71 @@ def test_cancellation_after_publication_leaves_source_owned_by_database(
     assert source.is_file()
     assert stored is not None
     assert stored.status == "imported"
+
+
+def test_direct_task_cancellation_waits_for_published_source_ownership(
+    tmp_path, encoded_three_frame_video, monkeypatch
+):
+    settings = V1Settings(data_dir=tmp_path / "direct-cancel-handoff")
+    app = create_app(settings=settings, worker_factory=ControlledWorker)
+    job_id = "direct-cancel-handoff-job"
+    job_dir = settings.data_dir / "jobs" / job_id
+    source = job_dir / "source.mp4"
+    metadata = probe_video(encoded_three_frame_video)
+    entered_insert = threading.Event()
+    release_insert = threading.Event()
+    finished_insert = threading.Event()
+    original_create_imported = app.state.repository.create_imported
+
+    async def publish(*_args, **_kwargs):
+        job_dir.mkdir()
+        shutil.copyfile(encoded_three_frame_video, source)
+        return ImportedVideo(job_id, "shop.mp4", source, metadata)
+
+    def blocking_create_imported(*args, **kwargs):
+        entered_insert.set()
+        assert release_insert.wait(2)
+        try:
+            return original_create_imported(*args, **kwargs)
+        finally:
+            finished_insert.set()
+
+    monkeypatch.setattr(app.state.store, "import_multipart", publish)
+    monkeypatch.setattr(app.state.repository, "create_imported", blocking_create_imported)
+
+    async def exercise():
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            request = asyncio.create_task(
+                client.post(
+                    "/api/v1/jobs",
+                    files={
+                        "video": (
+                            "shop.mp4",
+                            encoded_three_frame_video.read_bytes(),
+                            "video/mp4",
+                        )
+                    },
+                )
+            )
+            while not entered_insert.is_set():
+                await asyncio.sleep(0.01)
+
+            request.cancel()
+            await asyncio.sleep(0.05)
+            assert not request.done()
+            release_insert.set()
+            with pytest.raises(asyncio.CancelledError):
+                await request
+            assert await asyncio.to_thread(finished_insert.wait, 2)
+
+    try:
+        asyncio.run(exercise())
+        stored = app.state.repository.get(job_id)
+    finally:
+        release_insert.set()
+        finished_insert.wait(2)
+        app.state.database.engine.dispose()
+
+    assert source.is_file()
+    assert stored.status == "imported"

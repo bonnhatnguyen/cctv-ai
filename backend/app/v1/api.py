@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import shutil
 from contextlib import asynccontextmanager
 from dataclasses import asdict
@@ -15,7 +16,13 @@ from fastapi.responses import FileResponse
 from .database import create_database
 from .jobs import JobConflictError, JobNotFoundError, JobRepository, JobView
 from .settings import V1Settings, get_settings
-from .storage import ImportStorageError, UnsupportedVideoError, UploadTooLargeError, VideoStore
+from .storage import (
+    ImportedVideo,
+    ImportStorageError,
+    UnsupportedVideoError,
+    UploadTooLargeError,
+    VideoStore,
+)
 from .worker import TrackingWorker, WorkerStoppedError
 
 
@@ -28,6 +35,47 @@ def _safe_file(path_text: str, job_id: str, jobs_root: Path) -> Path:
     if not path.is_file() or not path.is_relative_to(job_dir):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "media_not_found")
     return path
+
+
+def _persist_imported_or_rollback(
+    repository: JobRepository, imported: ImportedVideo
+) -> JobView:
+    """Give a published source exactly one durable owner."""
+    try:
+        return repository.create_imported(
+            imported.id,
+            imported.original_name,
+            imported.source,
+            imported.metadata,
+        )
+    except BaseException:
+        shutil.rmtree(imported.source.parent, ignore_errors=True)
+        raise
+
+
+async def _complete_import_handoff(
+    repository: JobRepository, imported: ImportedVideo
+) -> JobView:
+    operation = asyncio.create_task(
+        anyio.to_thread.run_sync(
+            _persist_imported_or_rollback,
+            repository,
+            imported,
+            abandon_on_cancel=False,
+        )
+    )
+    try:
+        return await asyncio.shield(operation)
+    except asyncio.CancelledError:
+        # asyncio.Task.cancel() bypasses AnyIO cancel-scope shielding. Keep the
+        # operation handle alive and reconcile its outcome before propagating
+        # cancellation; the synchronous operation itself owns rollback.
+        with anyio.CancelScope(shield=True):
+            try:
+                await asyncio.shield(operation)
+            except BaseException:
+                pass
+        raise
 
 
 def create_app(
@@ -80,23 +128,7 @@ def create_app(
             # or roll the directory back. Outer request cancellation is deferred
             # until this ownership handoff is complete.
             with anyio.CancelScope(shield=True):
-                try:
-                    return await anyio.to_thread.run_sync(
-                        repository.create_imported,
-                        imported.id,
-                        imported.original_name,
-                        imported.source,
-                        imported.metadata,
-                        abandon_on_cancel=False,
-                    )
-                except BaseException:
-                    await anyio.to_thread.run_sync(
-                        shutil.rmtree,
-                        imported.source.parent,
-                        True,
-                        abandon_on_cancel=False,
-                    )
-                    raise
+                return await _complete_import_handoff(repository, imported)
         except UploadTooLargeError as exc:
             raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "tep_video_qua_lon") from exc
         except UnsupportedVideoError as exc:
