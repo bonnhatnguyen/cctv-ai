@@ -13,6 +13,15 @@ class V1Settings(BaseSettings):
     device: str = "auto"
     image_size: int = 960
     max_upload_bytes: int = 4 * 1024**3
+    database_url: str | None = None
+    progress_interval_seconds: float = 0.25
+    worker_stop_timeout_seconds: float = 5.0
+
+    @property
+    def effective_database_url(self) -> str:
+        if self.database_url:
+            return self.database_url
+        return f"sqlite:///{(self.data_dir / 'jobs.db').resolve().as_posix()}"
 
     model_config = SettingsConfigDict(env_prefix="V1_TRACKING_", extra="ignore")
 

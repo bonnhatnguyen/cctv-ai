@@ -1,0 +1,214 @@
+from __future__ import annotations
+
+import shutil
+import threading
+from dataclasses import replace
+from pathlib import Path
+
+import pytest
+
+from app.v1.contracts import Progress, RunSummary, Stage
+from app.v1.database import create_database
+from app.v1.jobs import JobConflictError, JobRepository
+from app.v1.worker import TrackingWorker, WorkerStoppedError
+
+
+def _summary(frames: int = 3) -> RunSummary:
+    return RunSummary(
+        actual_device="cpu",
+        device_name="CPU",
+        processed_frames=frames,
+        local_track_count=1,
+        inference_samples=frames,
+        mean_inference_ms=4.5,
+        tracking_wall_ms_total=15.0,
+        processing_seconds=0.25,
+        effective_fps=12.0,
+        output_duration_ms=120,
+    )
+
+
+@pytest.fixture
+def repository(tmp_path):
+    database = create_database(f"sqlite:///{(tmp_path / 'jobs.db').as_posix()}")
+    database.create_schema()
+    return JobRepository(database.sessions)
+
+
+def _import_job(repository: JobRepository, source: Path, job_id: str = "job-1"):
+    from app.v1.media import probe_video
+
+    return repository.create_imported(job_id, "shop.mp4", source, probe_video(source))
+
+
+def test_job_view_never_exposes_private_paths(repository, encoded_three_frame_video, tmp_path):
+    source = tmp_path / "job-1" / "source.mp4"
+    source.parent.mkdir()
+    shutil.copyfile(encoded_three_frame_video, source)
+
+    payload = _import_job(repository, source).model_dump(mode="json")
+
+    assert payload["status"] == "imported"
+    assert payload["source_url"] == "/api/v1/jobs/job-1/source"
+    assert payload["result_url"] is None
+    assert not {"source_path", "output_path", "C:"}.intersection(payload)
+
+
+def test_worker_processes_jobs_serially_and_publishes_only_completed_output(
+    repository, encoded_three_frame_video, tmp_path
+):
+    active = 0
+    max_active = 0
+    call_order: list[str] = []
+    lock = threading.Lock()
+
+    def controlled_process(source, output, options, on_progress, **_kwargs):
+        nonlocal active, max_active
+        with lock:
+            active += 1
+            max_active = max(max_active, active)
+        call_order.append(source.parent.name)
+        on_progress(Progress(Stage.TRACKING, 1, 3))
+        shutil.copyfile(source, output)
+        with lock:
+            active -= 1
+        return _summary()
+
+    for job_id in ("job-1", "job-2"):
+        source = tmp_path / job_id / "source.mp4"
+        source.parent.mkdir()
+        shutil.copyfile(encoded_three_frame_video, source)
+        _import_job(repository, source, job_id)
+
+    worker = TrackingWorker(repository, tmp_path, "model.pt", "cpu", 960, process=controlled_process)
+    worker.start()
+    worker.submit("job-1")
+    worker.submit("job-2")
+    assert worker.wait_until_idle(timeout=5)
+    worker.stop()
+
+    assert call_order == ["job-1", "job-2"]
+    assert max_active == 1
+    assert repository.get("job-1").status == "ready"
+    assert repository.get("job-2").result_url == "/api/v1/jobs/job-2/result"
+    assert (tmp_path / "job-1" / "annotated.mp4").is_file()
+    assert not (tmp_path / "job-1" / "annotated.tmp.mp4").exists()
+
+
+def test_worker_failure_is_safe_and_preserves_imported_source(repository, encoded_three_frame_video, tmp_path):
+    source = tmp_path / "job-1" / "source.mp4"
+    source.parent.mkdir()
+    shutil.copyfile(encoded_three_frame_video, source)
+    original = source.read_bytes()
+    _import_job(repository, source)
+
+    def failing_process(source, output, options, on_progress, **_kwargs):
+        output.write_bytes(b"partial")
+        raise OSError(f"private path: {source}")
+
+    worker = TrackingWorker(repository, tmp_path, "model.pt", "cpu", 960, process=failing_process)
+    worker.start()
+    worker.submit("job-1")
+    assert worker.wait_until_idle(timeout=5)
+    worker.stop()
+
+    stored = repository.get("job-1")
+    assert (stored.status, stored.stage, stored.failure_code) == (
+        "failed", "failed", "khong_the_xu_ly_video"
+    )
+    assert source.read_bytes() == original
+    assert not (tmp_path / "job-1" / "annotated.tmp.mp4").exists()
+
+
+def test_restart_marks_interrupted_processing_failed_and_recovers_queued_once(
+    repository, encoded_three_frame_video, tmp_path
+):
+    for job_id in ("processing", "queued"):
+        source = tmp_path / job_id / "source.mp4"
+        source.parent.mkdir()
+        shutil.copyfile(encoded_three_frame_video, source)
+        _import_job(repository, source, job_id)
+        repository.enqueue(job_id)
+    repository.mark_processing("processing")
+    calls: list[str] = []
+
+    def controlled_process(source, output, options, on_progress, **_kwargs):
+        calls.append(source.parent.name)
+        shutil.copyfile(source, output)
+        return _summary()
+
+    worker = TrackingWorker(repository, tmp_path, "model.pt", "cpu", 960, process=controlled_process)
+    worker.start()
+    worker.start()
+    assert worker.wait_until_idle(timeout=5)
+    worker.stop()
+
+    interrupted = repository.get("processing")
+    assert interrupted.status == "failed"
+    assert interrupted.failure_code == "xu_ly_bi_gian_doan"
+    assert calls == ["queued"]
+
+
+def test_submit_is_idempotent_for_active_jobs_and_rejects_terminal_or_stopped(
+    repository, encoded_three_frame_video, tmp_path
+):
+    source = tmp_path / "job-1" / "source.mp4"
+    source.parent.mkdir()
+    shutil.copyfile(encoded_three_frame_video, source)
+    _import_job(repository, source)
+    release = threading.Event()
+
+    def controlled_process(source, output, options, on_progress, **_kwargs):
+        assert release.wait(5)
+        shutil.copyfile(source, output)
+        return _summary()
+
+    worker = TrackingWorker(repository, tmp_path, "model.pt", "cpu", 960, process=controlled_process)
+    worker.start()
+    assert worker.submit("job-1").status in {"queued", "processing"}
+    assert worker.submit("job-1").status in {"queued", "processing"}
+    release.set()
+    assert worker.wait_until_idle(timeout=5)
+    with pytest.raises(JobConflictError):
+        worker.submit("job-1")
+    worker.stop()
+    with pytest.raises(WorkerStoppedError):
+        worker.submit("missing")
+
+
+def test_stop_cleanly_interrupts_owned_work_without_hanging(repository, encoded_three_frame_video, tmp_path):
+    source = tmp_path / "job-1" / "source.mp4"
+    source.parent.mkdir()
+    shutil.copyfile(encoded_three_frame_video, source)
+    _import_job(repository, source)
+    started = threading.Event()
+    release = threading.Event()
+    interrupted = threading.Event()
+
+    def controlled_process(source, output, options, on_progress, **_kwargs):
+        started.set()
+        try:
+            while not release.wait(0.01):
+                on_progress(Progress(Stage.TRACKING, 1, 3))
+        except Exception:
+            interrupted.set()
+            raise
+        shutil.copyfile(source, output)
+        return _summary()
+
+    worker = TrackingWorker(
+        repository, tmp_path, "model.pt", "cpu", 960,
+        process=controlled_process, stop_timeout_seconds=0.2,
+    )
+    worker.start()
+    worker.submit("job-1")
+    assert started.wait(1)
+
+    worker.stop()
+    release.set()
+
+    assert interrupted.wait(1)
+    assert worker.wait_until_idle(timeout=1)
+    stored = repository.get("job-1")
+    assert stored.status == "failed"
+    assert stored.failure_code == "xu_ly_bi_gian_doan"
