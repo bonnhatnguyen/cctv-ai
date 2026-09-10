@@ -294,9 +294,10 @@ class VideoStore:
         except OSError as exc:
             raise ImportStorageError("unable to store video") from exc
         finally:
-            if target is not None:
-                await anyio.to_thread.run_sync(_close_upload, target, abandon_on_cancel=False)
-            if not published:
-                await anyio.to_thread.run_sync(
-                    _remove_import_directory, job_dir, abandon_on_cancel=False
-                )
+            with anyio.CancelScope(shield=True):
+                if target is not None:
+                    await anyio.to_thread.run_sync(_close_upload, target, abandon_on_cancel=False)
+                if not published:
+                    await anyio.to_thread.run_sync(
+                        _remove_import_directory, job_dir, abandon_on_cancel=False
+                    )

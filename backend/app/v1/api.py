@@ -76,23 +76,27 @@ def create_app(
                 request.headers.get("content-type", ""),
                 request.headers.get("content-length"),
             )
-            try:
-                return await anyio.to_thread.run_sync(
-                    repository.create_imported,
-                    imported.id,
-                    imported.original_name,
-                    imported.source,
-                    imported.metadata,
-                    abandon_on_cancel=False,
-                )
-            except Exception:
-                await anyio.to_thread.run_sync(
-                    shutil.rmtree,
-                    imported.source.parent,
-                    True,
-                    abandon_on_cancel=False,
-                )
-                raise
+            # Once storage publishes source.mp4, either persist its owning row
+            # or roll the directory back. Outer request cancellation is deferred
+            # until this ownership handoff is complete.
+            with anyio.CancelScope(shield=True):
+                try:
+                    return await anyio.to_thread.run_sync(
+                        repository.create_imported,
+                        imported.id,
+                        imported.original_name,
+                        imported.source,
+                        imported.metadata,
+                        abandon_on_cancel=False,
+                    )
+                except BaseException:
+                    await anyio.to_thread.run_sync(
+                        shutil.rmtree,
+                        imported.source.parent,
+                        True,
+                        abandon_on_cancel=False,
+                    )
+                    raise
         except UploadTooLargeError as exc:
             raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "tep_video_qua_lon") from exc
         except UnsupportedVideoError as exc:

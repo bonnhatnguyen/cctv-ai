@@ -6,14 +6,17 @@ import threading
 import time
 from pathlib import Path
 
+import anyio
 import httpx
 import pytest
 from fastapi.testclient import TestClient
 
 from app.v1.api import create_app
 from app.v1.contracts import RunSummary
-from app.v1.jobs import JobRepository
+from app.v1.jobs import JobNotFoundError, JobRepository
+from app.v1.media import probe_video
 from app.v1.settings import V1Settings
+from app.v1.storage import ImportedVideo, VideoStore
 
 
 class ControlledWorker:
@@ -295,3 +298,86 @@ def test_health_responds_while_uploaded_video_validation_is_blocked(
     assert health.status_code == 200
     assert elapsed < 0.5
     assert uploaded.status_code == 201
+
+
+def test_cancellation_between_upload_chunks_removes_partial_private_directory(tmp_path):
+    root = tmp_path / "cancelled-stream"
+    store = VideoStore(root, max_upload_bytes=1024 * 1024)
+    boundary = b"cancel-boundary"
+    first_chunk = (
+        b"--" + boundary + b"\r\n"
+        b'Content-Disposition: form-data; name="video"; filename="shop.mp4"\r\n'
+        b"Content-Type: video/mp4\r\n\r\npartial-video-bytes"
+    )
+
+    async def exercise():
+        first_chunk_processed = anyio.Event()
+        scope_ready = anyio.Event()
+        holder = {}
+
+        async def chunks():
+            yield first_chunk
+            first_chunk_processed.set()
+            await anyio.sleep_forever()
+
+        async def run_import():
+            with anyio.CancelScope() as cancel_scope:
+                holder["scope"] = cancel_scope
+                scope_ready.set()
+                await store.import_multipart(
+                    chunks(), f"multipart/form-data; boundary={boundary.decode()}"
+                )
+
+        async with anyio.create_task_group() as tasks:
+            tasks.start_soon(run_import)
+            await scope_ready.wait()
+            await first_chunk_processed.wait()
+            holder["scope"].cancel()
+
+    anyio.run(exercise)
+
+    assert root.is_dir()
+    assert list(root.iterdir()) == []
+
+
+def test_cancellation_after_publication_leaves_source_owned_by_database(
+    tmp_path, encoded_three_frame_video, monkeypatch
+):
+    settings = V1Settings(data_dir=tmp_path / "cancelled-handoff")
+    app = create_app(settings=settings, worker_factory=ControlledWorker)
+    job_id = "cancelled-handoff-job"
+    job_dir = settings.data_dir / "jobs" / job_id
+    source = job_dir / "source.mp4"
+    metadata = probe_video(encoded_three_frame_video)
+    holder = {}
+
+    async def publish_then_cancel(*_args, **_kwargs):
+        job_dir.mkdir()
+        shutil.copyfile(encoded_three_frame_video, source)
+        holder["scope"].cancel()
+        return ImportedVideo(job_id, "shop.mp4", source, metadata)
+
+    monkeypatch.setattr(app.state.store, "import_multipart", publish_then_cancel)
+
+    async def exercise():
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            with anyio.CancelScope() as cancel_scope:
+                holder["scope"] = cancel_scope
+                await client.post(
+                    "/api/v1/jobs",
+                    files={"video": ("shop.mp4", encoded_three_frame_video.read_bytes(), "video/mp4")},
+                )
+
+    try:
+        anyio.run(exercise)
+        try:
+            stored = app.state.repository.get(job_id)
+        except JobNotFoundError:
+            stored = None
+    finally:
+        app.state.database.engine.dispose()
+
+    assert source.is_file()
+    assert stored is not None
+    assert stored.status == "imported"
