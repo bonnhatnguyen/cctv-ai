@@ -7,10 +7,12 @@ import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
+from typing import AsyncIterable, BinaryIO, Callable
 from uuid import uuid4
 
 from fastapi import UploadFile
+from python_multipart import MultipartParser
+from python_multipart.multipart import MultipartParseError, parse_options_header
 
 from .contracts import VideoMetadata
 from .media import fully_decode_video, probe_video
@@ -68,6 +70,20 @@ class VideoStore:
         self._decode = decode
         self._chunk_size = chunk_size
 
+    def _validate_and_publish(
+        self, job_id: str, original_name: str, temporary: Path, source: Path, written: int
+    ) -> ImportedVideo:
+        if not _is_mp4_container(temporary):
+            raise UnsupportedVideoError("unsupported container")
+        metadata = self._probe(temporary)
+        decoded = self._decode(temporary)
+        if decoded.decoded_frames <= 0 or metadata.duration_ms <= 0:
+            raise UnsupportedVideoError("empty video")
+        if metadata.size_bytes != written:
+            raise ImportStorageError("written byte count mismatch")
+        os.replace(temporary, source)
+        return ImportedVideo(job_id, original_name, source, metadata)
+
     def import_mp4(self, upload: UploadFile) -> ImportedVideo:
         original_name = _safe_name(upload.filename)
         if Path(original_name).suffix.lower() != ".mp4":
@@ -90,16 +106,7 @@ class VideoStore:
                     target.write(chunk)
                 target.flush()
                 os.fsync(target.fileno())
-            if not _is_mp4_container(temporary):
-                raise UnsupportedVideoError("unsupported container")
-            metadata = self._probe(temporary)
-            decoded = self._decode(temporary)
-            if decoded.decoded_frames <= 0 or metadata.duration_ms <= 0:
-                raise UnsupportedVideoError("empty video")
-            if metadata.size_bytes != written:
-                raise ImportStorageError("written byte count mismatch")
-            os.replace(temporary, source)
-            return ImportedVideo(job_id, original_name, source, metadata)
+            return self._validate_and_publish(job_id, original_name, temporary, source, written)
         except (UploadTooLargeError, UnsupportedVideoError):
             shutil.rmtree(job_dir, ignore_errors=True)
             raise
@@ -109,3 +116,126 @@ class VideoStore:
         except OSError as exc:
             shutil.rmtree(job_dir, ignore_errors=True)
             raise ImportStorageError("unable to store video") from exc
+
+    async def import_multipart(
+        self,
+        stream: AsyncIterable[bytes],
+        content_type: str,
+        content_length: str | None = None,
+        *,
+        overhead_allowance: int = 64 * 1024,
+    ) -> ImportedVideo:
+        """Parse exactly one ``video`` file directly into private storage.
+
+        File bytes are rejected by the incremental parser before an over-limit
+        chunk is written. A separate request-body allowance also bounds headers,
+        delimiters, and epilogue even when Content-Length is missing or false.
+        """
+        media_type, options = parse_options_header(content_type)
+        boundary = options.get(b"boundary")
+        if media_type != b"multipart/form-data" or not boundary:
+            raise UnsupportedVideoError("multipart video required")
+        max_body_bytes = self.max_upload_bytes + overhead_allowance
+        if content_length:
+            try:
+                if int(content_length) > max_body_bytes:
+                    raise UploadTooLargeError()
+            except ValueError as exc:
+                raise UnsupportedVideoError("invalid content length") from exc
+
+        job_id = str(uuid4())
+        job_dir = self.root / job_id
+        temporary = job_dir / "source.upload.mp4"
+        source = job_dir / "source.mp4"
+        original_name: str | None = None
+        target: BinaryIO | None = None
+        current_header_name = bytearray()
+        current_header_value = bytearray()
+        disposition = b""
+        part_count = 0
+        completed = False
+        file_bytes = 0
+        body_bytes = 0
+
+        def on_part_begin() -> None:
+            nonlocal disposition, part_count
+            disposition = b""
+            part_count += 1
+
+        def on_header_field(data: bytes, start: int, end: int) -> None:
+            current_header_name.extend(data[start:end])
+
+        def on_header_value(data: bytes, start: int, end: int) -> None:
+            current_header_value.extend(data[start:end])
+
+        def on_header_end() -> None:
+            nonlocal disposition
+            if bytes(current_header_name).lower() == b"content-disposition":
+                disposition = bytes(current_header_value)
+            current_header_name.clear()
+            current_header_value.clear()
+
+        def on_headers_finished() -> None:
+            nonlocal original_name, target
+            _kind, parameters = parse_options_header(disposition)
+            field_name = parameters.get(b"name", b"").decode("utf-8", errors="replace")
+            filename = parameters.get(b"filename")
+            if part_count != 1 or field_name != "video" or filename is None:
+                raise UnsupportedVideoError("exactly one video file is required")
+            original_name = _safe_name(filename.decode("utf-8", errors="replace"))
+            if Path(original_name).suffix.lower() != ".mp4":
+                raise UnsupportedVideoError("MP4 required")
+            job_dir.mkdir(parents=True, exist_ok=False)
+            target = temporary.open("xb")
+
+        def on_part_data(data: bytes, start: int, end: int) -> None:
+            nonlocal file_bytes
+            if target is None:
+                raise UnsupportedVideoError("video file is unavailable")
+            length = end - start
+            if file_bytes + length > self.max_upload_bytes:
+                raise UploadTooLargeError()
+            target.write(data[start:end])
+            file_bytes += length
+
+        def on_part_end() -> None:
+            nonlocal completed
+            completed = True
+
+        callbacks = {
+            "on_part_begin": on_part_begin,
+            "on_header_field": on_header_field,
+            "on_header_value": on_header_value,
+            "on_header_end": on_header_end,
+            "on_headers_finished": on_headers_finished,
+            "on_part_data": on_part_data,
+            "on_part_end": on_part_end,
+        }
+        parser = MultipartParser(boundary, callbacks, max_header_count=8, max_header_size=4224)
+        try:
+            async for chunk in stream:
+                body_bytes += len(chunk)
+                if body_bytes > max_body_bytes:
+                    raise UploadTooLargeError()
+                parser.write(chunk)
+            parser.finalize()
+            if target is None or original_name is None or not completed or part_count != 1:
+                raise UnsupportedVideoError("incomplete multipart video")
+            target.flush()
+            os.fsync(target.fileno())
+            target.close()
+            target = None
+            return self._validate_and_publish(job_id, original_name, temporary, source, file_bytes)
+        except (UploadTooLargeError, UnsupportedVideoError):
+            raise
+        except MultipartParseError as exc:
+            raise UnsupportedVideoError("invalid multipart body") from exc
+        except (ValueError, subprocess.SubprocessError) as exc:
+            raise UnsupportedVideoError("unreadable video") from exc
+        except OSError as exc:
+            raise ImportStorageError("unable to store video") from exc
+        finally:
+            if target is not None:
+                target.close()
+            if not source.is_file():
+                shutil.rmtree(job_dir, ignore_errors=True)

@@ -9,6 +9,7 @@ import subprocess
 import sys
 import time
 from dataclasses import replace
+from pathlib import Path
 
 
 def _tiny_source(path):
@@ -317,3 +318,41 @@ def test_separate_videos_get_fresh_tracker_and_summary_uses_measured_denominator
         assert summary.mean_inference_ms == 6.0
         assert summary.tracking_wall_ms_total == 6.0
         assert summary.effective_fps == pytest.approx(3 / summary.processing_seconds)
+
+
+def test_loading_progress_interrupt_releases_evidence_file_on_windows(tmp_path, monkeypatch):
+    from app.v1 import pipeline
+    from app.v1.contracts import RunOptions, Stage
+
+    source = tmp_path / "source.mp4"
+    output = tmp_path / "result.mp4"
+    evidence = tmp_path / "tracking.evidence.jsonl"
+    _tiny_source(source)
+    real_open = Path.open
+    opened_evidence = []
+
+    def track_evidence_handle(path, *args, **kwargs):
+        handle = real_open(path, *args, **kwargs)
+        if path == evidence:
+            opened_evidence.append(handle)
+        return handle
+
+    monkeypatch.setattr(Path, "open", track_evidence_handle)
+
+    def interrupt(progress):
+        assert progress.stage == Stage.LOADING
+        raise RuntimeError("stop requested")
+
+    with pytest.raises(RuntimeError, match="stop requested"):
+        pipeline.process_video(
+            source, output, RunOptions("unused", "cpu"), interrupt, evidence_path=evidence
+        )
+
+    assert opened_evidence
+    try:
+        assert opened_evidence[0].closed
+    finally:
+        opened_evidence[0].close()
+    evidence.unlink()
+    assert not evidence.exists()
+    assert not output.exists()

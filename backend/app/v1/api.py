@@ -8,7 +8,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Callable
 
-from fastapi import FastAPI, File, HTTPException, Query, UploadFile, status
+from fastapi import FastAPI, HTTPException, Query, Request, status
 from fastapi.responses import FileResponse
 
 from .database import create_database
@@ -49,7 +49,6 @@ def create_app(
         configured.device,
         configured.image_size,
         progress_interval_seconds=configured.progress_interval_seconds,
-        stop_timeout_seconds=configured.worker_stop_timeout_seconds,
     )
 
     @asynccontextmanager
@@ -69,9 +68,13 @@ def create_app(
     application.state.worker = worker
 
     @application.post("/api/v1/jobs", response_model=JobView, status_code=status.HTTP_201_CREATED)
-    def import_video(video: UploadFile = File(...)) -> JobView:
+    async def import_video(request: Request) -> JobView:
         try:
-            imported = store.import_mp4(video)
+            imported = await store.import_multipart(
+                request.stream(),
+                request.headers.get("content-type", ""),
+                request.headers.get("content-length"),
+            )
             try:
                 return repository.create_imported(
                     imported.id, imported.original_name, imported.source, imported.metadata

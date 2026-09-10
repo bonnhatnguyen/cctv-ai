@@ -101,8 +101,7 @@ def process_video(
         raise ValueError("video frame timestamp count is inconsistent")
     output.parent.mkdir(parents=True, exist_ok=True)
     evidence_path.parent.mkdir(parents=True, exist_ok=True)
-    evidence_handle = evidence_path.open("x", encoding="utf-8")
-    on_progress(Progress(Stage.LOADING, 0, source_metadata.frame_count_estimate))
+    evidence_handle = None
     tracker = None
     capture = None
     encoder = None
@@ -115,6 +114,8 @@ def process_video(
     track_ids: set[int] = set()
     succeeded = False
     try:
+        evidence_handle = evidence_path.open("x", encoding="utf-8")
+        on_progress(Progress(Stage.LOADING, 0, source_metadata.frame_count_estimate))
         tracker = PersonTracker(options.model_path, options.device, options.image_size)
         capture = cv2.VideoCapture(str(source))
         if not capture.isOpened():

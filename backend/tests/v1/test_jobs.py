@@ -198,7 +198,7 @@ def test_stop_cleanly_interrupts_owned_work_without_hanging(repository, encoded_
 
     worker = TrackingWorker(
         repository, tmp_path, "model.pt", "cpu", 960,
-        process=controlled_process, stop_timeout_seconds=0.2,
+        process=controlled_process,
     )
     worker.start()
     worker.submit("job-1")
@@ -212,3 +212,142 @@ def test_stop_cleanly_interrupts_owned_work_without_hanging(repository, encoded_
     stored = repository.get("job-1")
     assert stored.status == "failed"
     assert stored.failure_code == "xu_ly_bi_gian_doan"
+
+
+def test_worker_contains_preprocessing_cleanup_failure_and_runs_next_job(
+    repository, encoded_three_frame_video, tmp_path
+):
+    calls: list[str] = []
+    for job_id in ("job-1", "job-2"):
+        source = tmp_path / job_id / "source.mp4"
+        source.parent.mkdir()
+        shutil.copyfile(encoded_three_frame_video, source)
+        _import_job(repository, source, job_id)
+    # A directory at the temporary-file path reproduces Windows unlink failure
+    # without relying on process-global monkeypatching.
+    (tmp_path / "job-1" / "annotated.tmp.mp4").mkdir()
+
+    def controlled_process(source, output, options, on_progress, **_kwargs):
+        calls.append(source.parent.name)
+        shutil.copyfile(source, output)
+        return _summary()
+
+    worker = TrackingWorker(repository, tmp_path, "model.pt", "cpu", 960, process=controlled_process)
+    worker.start()
+    worker.submit("job-1")
+    worker.submit("job-2")
+    assert worker.wait_until_idle(timeout=2)
+    worker.stop()
+
+    assert repository.get("job-1").status == "failed"
+    assert repository.get("job-2").status == "ready"
+    assert calls == ["job-1", "job-2"]
+
+
+def test_worker_contains_database_error_before_process_and_runs_next_job(
+    repository, encoded_three_frame_video, tmp_path, monkeypatch
+):
+    for job_id in ("job-1", "job-2"):
+        source = tmp_path / job_id / "source.mp4"
+        source.parent.mkdir()
+        shutil.copyfile(encoded_three_frame_video, source)
+        _import_job(repository, source, job_id)
+    original_mark_processing = repository.mark_processing
+    failed_once = False
+
+    def fail_first_mark(job_id):
+        nonlocal failed_once
+        if not failed_once:
+            failed_once = True
+            raise OSError("database temporarily unavailable")
+        return original_mark_processing(job_id)
+
+    monkeypatch.setattr(repository, "mark_processing", fail_first_mark)
+
+    def controlled_process(source, output, options, on_progress, **_kwargs):
+        shutil.copyfile(source, output)
+        return _summary()
+
+    worker = TrackingWorker(repository, tmp_path, "model.pt", "cpu", 960, process=controlled_process)
+    worker.start()
+    worker.submit("job-1")
+    worker.submit("job-2")
+    assert worker.wait_until_idle(timeout=2)
+    worker.stop()
+
+    assert repository.get("job-1").status == "failed"
+    assert repository.get("job-2").status == "ready"
+
+
+def test_worker_retries_failure_persistence_without_losing_the_queue(
+    repository, encoded_three_frame_video, tmp_path, monkeypatch
+):
+    for job_id in ("job-1", "job-2"):
+        source = tmp_path / job_id / "source.mp4"
+        source.parent.mkdir()
+        shutil.copyfile(encoded_three_frame_video, source)
+        _import_job(repository, source, job_id)
+    original_fail = repository.fail
+    failure_writes = 0
+
+    def fail_once(job_id, code):
+        nonlocal failure_writes
+        failure_writes += 1
+        if failure_writes == 1:
+            raise OSError("database temporarily unavailable")
+        return original_fail(job_id, code)
+
+    monkeypatch.setattr(repository, "fail", fail_once)
+
+    def controlled_process(source, output, options, on_progress, **_kwargs):
+        if source.parent.name == "job-1":
+            raise RuntimeError("inference failed")
+        shutil.copyfile(source, output)
+        return _summary()
+
+    worker = TrackingWorker(repository, tmp_path, "model.pt", "cpu", 960, process=controlled_process)
+    worker.start()
+    worker.submit("job-1")
+    worker.submit("job-2")
+    assert worker.wait_until_idle(timeout=2)
+    worker.stop()
+
+    assert failure_writes == 2
+    assert repository.get("job-1").status == "failed"
+    assert repository.get("job-2").status == "ready"
+
+
+def test_stop_waits_until_long_noncallback_work_is_fully_reaped(
+    repository, encoded_three_frame_video, tmp_path
+):
+    source = tmp_path / "job-1" / "source.mp4"
+    source.parent.mkdir()
+    shutil.copyfile(encoded_three_frame_video, source)
+    _import_job(repository, source)
+    started = threading.Event()
+    release = threading.Event()
+    finished = threading.Event()
+
+    def controlled_process(source, output, options, on_progress, **_kwargs):
+        started.set()
+        assert release.wait(2)
+        shutil.copyfile(source, output)
+        finished.set()
+        return _summary()
+
+    worker = TrackingWorker(
+        repository, tmp_path, "model.pt", "cpu", 960,
+        process=controlled_process,
+    )
+    worker.start()
+    worker.submit("job-1")
+    assert started.wait(1)
+    timer = threading.Timer(0.25, release.set)
+    timer.start()
+
+    worker.stop()
+    timer.join()
+
+    assert finished.is_set()
+    assert worker._thread is not None and not worker._thread.is_alive()
+    assert repository.get("job-1").status == "ready"

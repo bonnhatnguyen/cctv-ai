@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import shutil
 from pathlib import Path
 
@@ -183,3 +184,47 @@ def test_lifespan_releases_sqlite_file_handle_on_windows(tmp_path):
     database_file = settings.data_dir / "jobs.db"
     database_file.unlink()
     assert not database_file.exists()
+
+
+def test_chunked_upload_without_content_length_stops_before_full_body_is_spooled(tmp_path):
+    limit = 32 * 1024
+    settings = V1Settings(data_dir=tmp_path / "bounded", max_upload_bytes=limit)
+    app = create_app(settings=settings, worker_factory=ControlledWorker)
+    boundary = b"task3-boundary"
+    body = (
+        b"--" + boundary + b"\r\n"
+        b'Content-Disposition: form-data; name="video"; filename="large.mp4"\r\n'
+        b"Content-Type: video/mp4\r\n\r\n"
+        + b"x" * (limit * 8)
+        + b"\r\n--" + boundary + b"--\r\n"
+    )
+    chunks = [body[index:index + 4096] for index in range(0, len(body), 4096)]
+    received_bytes = 0
+    sent_messages = []
+
+    async def receive():
+        nonlocal received_bytes
+        chunk = chunks.pop(0)
+        received_bytes += len(chunk)
+        return {"type": "http.request", "body": chunk, "more_body": bool(chunks)}
+
+    async def send(message):
+        sent_messages.append(message)
+
+    scope = {
+        "type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1",
+        "method": "POST", "scheme": "http", "path": "/api/v1/jobs",
+        "raw_path": b"/api/v1/jobs", "query_string": b"", "root_path": "",
+        "headers": [(b"host", b"test"), (b"content-type", b"multipart/form-data; boundary=" + boundary)],
+        "client": ("test", 123), "server": ("test", 80),
+    }
+
+    try:
+        asyncio.run(app(scope, receive, send))
+    finally:
+        app.state.database.engine.dispose()
+
+    response_start = next(message for message in sent_messages if message["type"] == "http.response.start")
+    assert response_start["status"] == 413
+    assert received_bytes <= limit + 4096
+    assert list((settings.data_dir / "jobs").iterdir()) == []

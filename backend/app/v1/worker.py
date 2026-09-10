@@ -37,14 +37,12 @@ class TrackingWorker:
         *,
         process: Callable = process_video,
         progress_interval_seconds: float = 0.25,
-        stop_timeout_seconds: float = 5.0,
     ):
         self._repository = repository
         self._data_root = Path(data_root)
         self._options = RunOptions(str(model_path), device, image_size)
         self._process = process
         self._progress_interval = progress_interval_seconds
-        self._stop_timeout = stop_timeout_seconds
         self._queue: queue.Queue[str | None] = queue.Queue()
         self._scheduled: set[str] = set()
         self._lock = threading.Lock()
@@ -74,7 +72,7 @@ class TrackingWorker:
             thread = self._thread
             self._queue.put(None)
         if thread is not None:
-            thread.join(timeout=self._stop_timeout)
+            thread.join()
 
     def submit(self, job_id: str) -> JobView:
         with self._lock:
@@ -105,7 +103,11 @@ class TrackingWorker:
                     continue
                 with self._lock:
                     self._active = True
-                self._process_one(job_id)
+                try:
+                    self._process_one(job_id)
+                except Exception:
+                    logger.exception("Unexpected V1 worker error for job %s", job_id)
+                    self._persist_failure(job_id, "khong_the_xu_ly_video")
             finally:
                 if job_id is not None:
                     with self._lock:
@@ -123,7 +125,7 @@ class TrackingWorker:
         temporary_evidence = final_output.with_name("tracking.tmp.evidence.jsonl")
         final_evidence = final_output.with_name("tracking.evidence.jsonl")
         for path in (temporary_output, temporary_evidence):
-            path.unlink(missing_ok=True)
+            self._safe_remove(path)
         last_stage: Stage | None = None
         last_saved = 0.0
 
@@ -153,15 +155,32 @@ class TrackingWorker:
                 os.replace(temporary_evidence, final_evidence)
             self._repository.complete(job_id, final_output, summary)
         except _ProcessingInterrupted:
-            temporary_output.unlink(missing_ok=True)
-            temporary_evidence.unlink(missing_ok=True)
+            self._safe_remove(temporary_output)
+            self._safe_remove(temporary_evidence)
             if published:
-                final_output.unlink(missing_ok=True)
-            self._repository.fail(job_id, "xu_ly_bi_gian_doan")
+                self._safe_remove(final_output)
+            self._persist_failure(job_id, "xu_ly_bi_gian_doan")
         except Exception:
             logger.exception("V1 tracking job failed: %s", job_id)
-            temporary_output.unlink(missing_ok=True)
-            temporary_evidence.unlink(missing_ok=True)
+            self._safe_remove(temporary_output)
+            self._safe_remove(temporary_evidence)
             if published:
-                final_output.unlink(missing_ok=True)
-            self._repository.fail(job_id, "khong_the_xu_ly_video")
+                self._safe_remove(final_output)
+            self._persist_failure(job_id, "khong_the_xu_ly_video")
+
+    @staticmethod
+    def _safe_remove(path: Path) -> None:
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            logger.warning("Unable to remove private temporary media for %s", path.name, exc_info=True)
+
+    def _persist_failure(self, job_id: str, failure_code: str) -> None:
+        for attempt in range(2):
+            try:
+                self._repository.fail(job_id, failure_code)
+                return
+            except Exception:
+                logger.exception(
+                    "Unable to persist V1 job failure (attempt %s) for %s", attempt + 1, job_id
+                )
