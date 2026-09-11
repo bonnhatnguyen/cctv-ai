@@ -67,6 +67,8 @@ Nhãn `người #ID` chỉ là ID cục bộ trong **một clip**. Nó không ph
 danh tính thật, không nối qua hai video khác nhau và có thể đổi khi người bị che
 khuất lâu, ra khỏi khung rồi quay lại hoặc tracker mất dấu. Một người có thể có
 nhiều ID trong clip; không dùng ID này để kết luận danh tính hay hành vi.
+Chỉ số **Số ID theo dõi cục bộ trong clip** là số ID phân biệt đã xuất hiện
+trong evidence của lần chạy; đây không phải số người duy nhất.
 
 ## Khởi động lại và dừng V1
 

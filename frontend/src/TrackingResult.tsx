@@ -104,7 +104,7 @@ export function TrackingResult({ job }: { job: JobView }) {
         <dl>
           <div><dt>Thiết bị thực tế</dt><dd>{summary.actual_device} · {summary.device_name}</dd></div>
           <div><dt>Khung hình đã xử lý</dt><dd>{number(summary.processed_frames, 0)}</dd></div>
-          <div><dt>Số ID trong clip</dt><dd>{number(summary.local_track_count, 0)}</dd></div>
+          <div><dt>Số ID theo dõi cục bộ trong clip</dt><dd>{number(summary.local_track_count, 0)}<small>Không phải số người duy nhất.</small></dd></div>
           <div><dt>Tổng thời gian xử lý</dt><dd>{number(summary.processing_seconds)} giây</dd></div>
           <div><dt>Tốc độ xử lý thực tế</dt><dd>{number(summary.effective_fps)} khung hình/giây</dd></div>
           {summary.mean_inference_ms !== null && summary.inference_samples > 0 && (

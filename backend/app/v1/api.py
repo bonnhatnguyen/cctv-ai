@@ -13,6 +13,13 @@ import anyio
 from fastapi import FastAPI, HTTPException, Query, Request, status
 from fastapi.responses import FileResponse
 
+from app.annotation.api import create_router as create_annotation_router
+from app.annotation.database import AnnotationDatabase
+from app.annotation.frames import FrameService
+from app.annotation.repository import AnnotationRepository
+from app.annotation.settings import AnnotationSettings, resolve_v1_data_dir
+from app.annotation.worker import PreparationWorker
+
 from .database import create_database
 from .jobs import JobConflictError, JobNotFoundError, JobRepository, JobView
 from .settings import V1Settings, get_settings
@@ -82,6 +89,9 @@ def create_app(
     *,
     settings: V1Settings | None = None,
     worker_factory: Callable[[JobRepository], object] | None = None,
+    annotation_settings: AnnotationSettings | None = None,
+    annotation_worker_factory: Callable[[AnnotationRepository, FrameService], object]
+    | None = None,
 ) -> FastAPI:
     configured = settings or get_settings()
     configured.data_dir.mkdir(parents=True, exist_ok=True)
@@ -99,15 +109,56 @@ def create_app(
         configured.image_size,
         progress_interval_seconds=configured.progress_interval_seconds,
     )
+    source_data_root = resolve_v1_data_dir(configured.data_dir)
+    configured_annotation = annotation_settings or AnnotationSettings.for_data_dir(
+        source_data_root
+    )
+    if configured_annotation.root is None:
+        configured_annotation = configured_annotation.model_copy(
+            update={"root": (source_data_root / "annotations").resolve()}
+        )
+    annotation_database = AnnotationDatabase(configured_annotation.root, source_data_root)
+    annotation_repository = AnnotationRepository(annotation_database, repository)
+    annotation_frames = FrameService(
+        configured_annotation.root,
+        annotation_repository,
+        cache_limit_bytes=configured_annotation.frame_cache_limit_bytes,
+        queue_limit=configured_annotation.frame_queue_limit,
+        request_deadline_seconds=configured_annotation.frame_request_deadline_seconds,
+        prepared_limit_bytes=configured_annotation.prepared_limit_bytes,
+        free_disk_reserve_bytes=configured_annotation.free_disk_reserve_bytes,
+    )
+    annotation_worker = (
+        annotation_worker_factory(annotation_repository, annotation_frames)
+        if annotation_worker_factory
+        else PreparationWorker(
+            annotation_repository,
+            annotation_frames,
+            stall_timeout_seconds=configured_annotation.process_stall_timeout_seconds,
+            deadline_seconds=configured_annotation.preparation_deadline_seconds,
+        )
+    )
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
+        annotation_database.initialize()
+        reconcile_annotation = getattr(annotation_worker, "reconcile_startup", None)
+        if callable(reconcile_annotation):
+            reconcile_annotation()
         worker.start()
+        annotation_worker.start()
         try:
             yield
         finally:
-            worker.stop()
+            errors: list[BaseException] = []
+            for stop in (annotation_worker.stop, worker.stop, annotation_database.close):
+                try:
+                    stop()
+                except BaseException as exc:
+                    errors.append(exc)
             database.engine.dispose()
+            if errors:
+                raise errors[0]
 
     application = FastAPI(title="V1 Offline Person Tracking", version="1", lifespan=lifespan)
     application.state.settings = configured
@@ -115,6 +166,19 @@ def create_app(
     application.state.repository = repository
     application.state.store = store
     application.state.worker = worker
+    application.state.annotation_settings = configured_annotation
+    application.state.annotation_database = annotation_database
+    application.state.annotation_repository = annotation_repository
+    application.state.annotation_frames = annotation_frames
+    application.state.annotation_worker = annotation_worker
+    application.include_router(
+        create_annotation_router(
+            annotation_repository,
+            annotation_frames,
+            annotation_worker,
+            instance_id=configured.instance_id,
+        )
+    )
 
     @application.post("/api/v1/jobs", response_model=JobView, status_code=status.HTTP_201_CREATED)
     async def import_video(request: Request) -> JobView:

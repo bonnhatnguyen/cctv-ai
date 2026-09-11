@@ -8,6 +8,7 @@ import {
   TrackingApiError,
 } from "./trackingApi";
 import { LocalVideo, VideoImport } from "./VideoImport";
+import { Workspace } from "./annotation/Workspace";
 
 const ACTIVE_JOB_KEY = "v1-active-tracking-job";
 const POLL_INTERVAL_MS = 1000;
@@ -26,6 +27,7 @@ function uploadError(error: unknown): string {
 }
 
 export default function App() {
+  const [mode, setMode] = useState<"tracking" | "annotation">("tracking");
   const [localVideo, setLocalVideo] = useState<LocalVideo | null>(null);
   const [job, setJob] = useState<JobView | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -184,6 +186,10 @@ export default function App() {
 
   const actionsLocked = uploading || starting || job?.status === "queued" || job?.status === "processing";
 
+  if (mode === "annotation") {
+    return <Workspace initialJobId={job?.id} onBack={() => setMode("tracking")} />;
+  }
+
   return (
     <main>
       <header className="hero">
@@ -206,6 +212,16 @@ export default function App() {
         onRetry={retryImport}
         onStart={beginTracking}
       />
+      <section className="annotation-entry" aria-labelledby="annotation-entry-title">
+        <div>
+          <p className="eyebrow">V2 · chuẩn bị dữ liệu nhãn</p>
+          <h2 id="annotation-entry-title">ROI rổ tiền cố định</h2>
+          <p>Mở clip đã nhập để khoanh vùng rổ tiền. Không cần chạy person tracking.</p>
+        </div>
+        <button type="button" className="secondary" onClick={() => setMode("annotation")}>
+          {job ? "Khoanh rổ tiền" : "Danh sách clip"}
+        </button>
+      </section>
       {job && <TrackingResult job={job} />}
 
       <footer>

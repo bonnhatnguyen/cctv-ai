@@ -7,7 +7,7 @@
 
 * { box-sizing: border-box; }
 body { margin: 0; min-width: 320px; }
-button, input { font: inherit; }
+button, input, select { font: inherit; }
 main { width: min(1120px, calc(100% - 32px)); margin: 32px auto; }
 
 .hero {
@@ -75,12 +75,44 @@ video { display: block; width: 100%; aspect-ratio: 16 / 9; border-radius: 7px; b
 .metrics dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 footer { padding: 22px 12px; color: #65736c; text-align: center; font-size: .86rem; }
 
+.annotation-entry, .workspace-header { display: flex; align-items: center; justify-content: space-between; gap: 22px; }
+.annotation-entry h2, .workspace-header h1 { margin: 3px 0 7px; color: #173d2e; }
+.annotation-entry p { margin: 0; color: #65736c; }
+.workspace-header { padding: 24px 28px; border-radius: 18px; color: #173d2e; background: #dff3e7; }
+.workspace-header h1 { font-size: clamp(1.7rem, 4vw, 2.7rem); }
+.annotation-start { display: flex; align-items: center; justify-content: space-between; padding-block: 18px; }
+.annotation-start .primary { margin-top: 0; }
+.workspace-grid { display: grid; grid-template-columns: minmax(230px, 300px) 1fr; gap: 16px; align-items: start; }
+.clip-list { position: sticky; top: 12px; }
+.clip-list h2, .annotation-main h2 { margin-top: 0; }
+.clip-card { display: grid; margin: 10px 0; padding: 12px; gap: 7px; border: 1px solid #d8e4dc; border-radius: 9px; }
+.clip-card.active { border-color: #277151; background: #eff8f2; }
+.clip-card span { color: #68776f; font-size: .8rem; overflow-wrap: anywhere; }
+.clip-card button { min-height: 36px; padding: 7px 10px; font-size: .82rem; }
+.annotation-main { min-width: 0; }
+.roi-stage { position: relative; width: 100%; aspect-ratio: 16 / 9; overflow: hidden; border-radius: 10px; background: #09110d; cursor: crosshair; }
+.media-plane { position: absolute; inset: 50% auto auto 50%; translate: -50% -50%; }
+.roi-stage img, .roi-stage video { display: block; width: 100%; height: 100%; border-radius: 0; }
+.roi-overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.roi-point { pointer-events: all; cursor: grab; }
+.frame-controls, .roi-actions, .inline-form { display: flex; flex-wrap: wrap; margin-top: 12px; gap: 8px; align-items: center; }
+.frame-controls input[type="range"] { flex: 1; min-width: 180px; }
+.frame-controls input[type="number"] { width: 90px; }
+.roi-editor { margin-top: 16px; padding: 18px; border-radius: 10px; background: #f2f7f4; }
+.roi-editor h3 { margin: 0 0 6px; }
+.roi-editor label { display: inline-flex; gap: 7px; align-items: center; }
+.roi-editor select, .roi-editor input { min-height: 40px; padding: 7px 10px; border: 1px solid #a9bdb2; border-radius: 6px; background: #fff; }
+.roi-editor .primary { margin-top: 0; }
+.metrics dd small { display: block; margin-top: 2px; color: #65736c; font-weight: 500; }
+
 @media (max-width: 720px) {
   main { width: min(100% - 18px, 1120px); margin: 9px auto; }
   .hero { padding: 28px 22px; border-radius: 17px 17px 7px 7px; }
   .brand { margin-bottom: 26px; }
   section { padding: 21px 17px; }
-  .video-grid, dl, .metrics dl { grid-template-columns: 1fr; }
+  .video-grid, dl, .metrics dl, .workspace-grid { grid-template-columns: 1fr; }
+  .annotation-entry, .workspace-header, .annotation-start { align-items: stretch; flex-direction: column; }
+  .clip-list { position: static; }
   .file-card { align-items: flex-start; flex-wrap: wrap; }
   .upload-state { width: 100%; min-width: 100%; }
 }

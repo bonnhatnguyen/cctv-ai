@@ -37,3 +37,10 @@ it("explains diagnostic CPU execution only after completion", () => {
   rerender(<TrackingResult job={{ ...ready, summary: { ...ready.summary!, actual_device: "cuda:0" } }} />);
   expect(screen.queryByText(/chậm hơn CUDA/i)).not.toBeInTheDocument();
 });
+
+it("explains the local track total", () => {
+  render(<TrackingResult job={ready} />);
+  expect(screen.getByText("Số ID theo dõi cục bộ trong clip")).toBeVisible();
+  expect(screen.getByText(/không phải số người duy nhất/i)).toBeVisible();
+  expect(screen.queryByText("Số ID trong clip")).not.toBeInTheDocument();
+});

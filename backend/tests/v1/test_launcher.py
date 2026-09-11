@@ -43,12 +43,13 @@ def _run_launcher(
     frontend_port: int,
     *extra: str,
     timeout: int = 90,
+    data_dir: Path | None = None,
 ) -> subprocess.CompletedProcess[str]:
     assert POWERSHELL
     state_dir.parent.mkdir(parents=True, exist_ok=True)
     stdout_path = state_dir.parent / f"launcher-{time.time_ns()}.stdout.txt"
     stderr_path = state_dir.parent / f"launcher-{time.time_ns()}.stderr.txt"
-    args = _launcher_args(state_dir, backend_port, frontend_port, *extra)
+    args = _launcher_args(state_dir, backend_port, frontend_port, *extra, data_dir=data_dir)
     with stdout_path.open("w", encoding="utf-8") as stdout, stderr_path.open(
         "w", encoding="utf-8"
     ) as stderr:
@@ -68,7 +69,8 @@ def _run_launcher(
 
 
 def _launcher_args(
-    state_dir: Path, backend_port: int, frontend_port: int, *extra: str
+    state_dir: Path, backend_port: int, frontend_port: int, *extra: str,
+    data_dir: Path | None = None,
 ) -> list[str]:
     assert POWERSHELL
     return [
@@ -82,7 +84,7 @@ def _launcher_args(
         "-LauncherDirectory",
         str(state_dir),
         "-DataDirectory",
-        str(state_dir.parent / f"{state_dir.name}-backend-data"),
+        str(data_dir or (state_dir.parent / f"{state_dir.name}-backend-data")),
         "-BackendPort",
         str(backend_port),
         "-FrontendPort",
@@ -219,6 +221,7 @@ def test_owned_frontend_with_stale_backend_target_is_safely_replaced(tmp_path):
     state_a = tmp_path / "state-a"
     state_b = tmp_path / "state-b"
     state_c = tmp_path / "state-c"
+    backend_b_data = state_b.parent / f"{state_b.name}-backend-data"
     first_a = _run_launcher(state_a, backend_a, frontend_a)
     first_b = _run_launcher(state_b, backend_b, frontend_b)
     try:
@@ -242,7 +245,7 @@ def test_owned_frontend_with_stale_backend_target_is_safely_replaced(tmp_path):
             "updated_at": data_a["updated_at"],
         }
         (state_c / "launcher-state.json").write_text(json.dumps(composite), encoding="utf-8")
-        replaced = _run_launcher(state_c, backend_b, frontend_a)
+        replaced = _run_launcher(state_c, backend_b, frontend_a, data_dir=backend_b_data)
         assert replaced.returncode == 0, replaced.stdout + replaced.stderr
         assert "backend target is stale" in replaced.stdout
         identity = httpx.get(f"http://127.0.0.1:{frontend_a}/__v1_identity", timeout=3).json()
@@ -251,7 +254,9 @@ def test_owned_frontend_with_stale_backend_target_is_safely_replaced(tmp_path):
         assert proxied["instance_id"] == data_b["instance_id"]
     finally:
         if (state_c / "launcher-state.json").exists():
-            assert _run_launcher(state_c, backend_b, frontend_a, "-Stop").returncode == 0
+            assert _run_launcher(
+                state_c, backend_b, frontend_a, "-Stop", data_dir=backend_b_data
+            ).returncode == 0
         if (state_a / "launcher-state.json").exists():
             assert _run_launcher(state_a, backend_a, frontend_a, "-Stop").returncode == 0
         if (state_b / "launcher-state.json").exists():

@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 
@@ -236,6 +236,37 @@ describe("luồng theo dõi người từ MP4", () => {
     );
     await act(async () => releaseStart(jsonResponse(job("queued"))));
     expect(await screen.findByText("Đang chờ đến lượt")).toBeVisible();
+  });
+
+  it("opens the basket ROI workspace without starting tracking", async () => {
+    vi.mocked(fetch).mockImplementation(async (url, init) => {
+      if (String(url).startsWith("/api/v2/annotations/clips") && init?.method !== "POST") {
+        return jsonResponse({ items: [], next_cursor: null });
+      }
+      if (String(url).startsWith("/api/v2/annotations/setups")) {
+        return jsonResponse({ items: [], next_cursor: null });
+      }
+      if (url === "/api/v2/annotations/clips" && init?.method === "POST") {
+        return jsonResponse({
+          schema_version: 1, id: "clip-1", source_job_id: "job-1", original_name: "cua-hang.mp4",
+          revision: 0, preparation_state: "preparing", source_state: "available", failure_code: null,
+          source_sha256: null, media: null, roi: null, preview_url: null, prepared_bytes: null,
+        }, 201);
+      }
+      throw new Error(`unexpected ${String(url)}`);
+    });
+    render(<App />);
+    selectMp4();
+    await finishImport();
+    expect(screen.getByText("V2 · chuẩn bị dữ liệu nhãn")).toBeVisible();
+    expect(screen.queryByText("V2 · gán nhãn hành động")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Khoanh rổ tiền" }));
+    expect(await screen.findByRole("heading", { name: "Khoanh ROI rổ tiền" })).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Khoanh rổ tiền" }));
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith(
+      "/api/v2/annotations/clips", expect.objectContaining({ method: "POST" }),
+    ));
+    expect(fetch).not.toHaveBeenCalledWith("/api/v1/jobs/job-1/start", expect.anything());
   });
 
   it("polls truthful stages and shows READY players plus measured metrics", async () => {

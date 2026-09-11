@@ -43,6 +43,15 @@ finally {
     $sha.Dispose()
 }
 
+$dataRootBytes = [System.Text.Encoding]::UTF8.GetBytes(([System.IO.Path]::GetFullPath($DataDirectory)).ToLowerInvariant())
+$dataRootSha = [System.Security.Cryptography.SHA256]::Create()
+try {
+    $AnnotationDataRootFingerprint = -join (($dataRootSha.ComputeHash($dataRootBytes)) | ForEach-Object { $_.ToString("x2") })
+}
+finally {
+    $dataRootSha.Dispose()
+}
+
 function Write-LauncherLog([string]$Message) {
     Write-Host "[V1] $Message"
 }
@@ -94,7 +103,12 @@ function Test-BackendIdentity {
 
 function Test-BackendReady {
     $health = Get-Json "$BackendUrl/api/v1/health"
-    return (Test-BackendIdentity) -and $null -ne $health -and $health.ready -eq $true
+    $annotation = Get-Json "$BackendUrl/api/v2/annotations/health"
+    return (Test-BackendIdentity) -and $null -ne $health -and $health.ready -eq $true -and
+        $null -ne $annotation -and $annotation.service -eq "basket-annotation" -and
+        [int]$annotation.schema_version -eq 1 -and $annotation.ready -eq $true -and
+        $annotation.instance_id -eq $InstanceId -and
+        $annotation.data_root_fingerprint -eq $AnnotationDataRootFingerprint
 }
 
 function Test-FrontendIdentity {
@@ -114,12 +128,16 @@ function Test-FrontendIdentity {
 function Test-FrontendReady {
     if (-not (Test-FrontendIdentity)) { return $false }
     $proxied = Get-Json "$FrontendUrl/api/v1/health"
+    $annotation = Get-Json "$FrontendUrl/api/v2/annotations/health"
     return $null -ne $proxied -and
         "instance_id" -in $proxied.PSObject.Properties.Name -and
         $proxied.service -eq "v1-person-tracking" -and
         $proxied.version -eq "1" -and
         $proxied.instance_id -eq $InstanceId -and
-        $proxied.ready -eq $true
+        $proxied.ready -eq $true -and $null -ne $annotation -and
+        $annotation.service -eq "basket-annotation" -and
+        $annotation.data_root_fingerprint -eq $AnnotationDataRootFingerprint -and
+        $annotation.ready -eq $true
 }
 
 function Resolve-Python {
@@ -565,7 +583,7 @@ try {
         $backendOut = Join-Path $LauncherDirectory "backend-$timestamp.log"
         $backendErr = Join-Path $LauncherDirectory "backend-$timestamp.error.log"
         $backendProcess = Start-Process -FilePath $Python `
-            -ArgumentList @("-m", "uvicorn", "app.v1.api:app", "--app-dir", $BackendDirectory, "--host", "127.0.0.1", "--port", "$BackendPort") `
+            -ArgumentList @("-m", "uvicorn", "app.v1.api:app", "--app-dir", ('"{0}"' -f $BackendDirectory), "--host", "127.0.0.1", "--port", "$BackendPort") `
             -WorkingDirectory $BackendDirectory -WindowStyle Hidden -PassThru `
             -RedirectStandardOutput $backendOut -RedirectStandardError $backendErr
         $createdBackend = New-PendingServiceRecord "backend" $backendProcess $BackendPort
@@ -623,7 +641,7 @@ try {
         $env:V1_BACKEND_URL = $BackendUrl
         $env:V1_TRACKING_INSTANCE_ID = $InstanceId
         $frontendProcess = Start-Process -FilePath $Pnpm `
-            -ArgumentList @("exec", "vite", $FrontendDirectory, "--config", (Join-Path $FrontendDirectory "vite.config.ts"), "--host", "127.0.0.1", "--port", "$FrontendPort", "--strictPort") `
+            -ArgumentList @("exec", "vite", ('"{0}"' -f $FrontendDirectory), "--config", ('"{0}"' -f (Join-Path $FrontendDirectory "vite.config.ts")), "--host", "127.0.0.1", "--port", "$FrontendPort", "--strictPort") `
             -WorkingDirectory $FrontendDirectory -WindowStyle Hidden -PassThru `
             -RedirectStandardOutput $frontendOut -RedirectStandardError $frontendErr
         $createdFrontend = New-PendingServiceRecord "frontend" $frontendProcess $FrontendPort $BackendUrl
