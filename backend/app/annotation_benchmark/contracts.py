@@ -94,3 +94,27 @@ class FrozenManifest(FrozenDto):
         if self.reference_state == "ready" and self.missing_scenarios:
             raise ValueError("a ready manifest cannot have missing scenarios")
         return self
+
+
+class RunConfig(FrozenDto):
+    schema_version: Literal[1] = 1
+    stride: StrictInt = Field(default=1, ge=1)
+    margin_ratio: float = Field(default=0.5, gt=0, allow_inf_nan=False)
+    context_ms: StrictInt = Field(default=1000, ge=0)
+    max_input_side: StrictInt = Field(default=960, ge=32)
+    association_distance: float = Field(default=0.15, gt=0, le=1, allow_inf_nan=False)
+    ambiguity_margin: float = Field(default=0.03, ge=0, le=1, allow_inf_nan=False)
+    boundary_epsilon: float = Field(default=0.002, ge=0, le=1, allow_inf_nan=False)
+    min_side_samples: StrictInt = Field(default=2, ge=2)
+    motion_epsilon: float = Field(default=0.002, ge=0, le=1, allow_inf_nan=False)
+    dino_box_threshold: float = Field(default=0.25, ge=0, le=1, allow_inf_nan=False)
+    dino_text_threshold: float = Field(default=0.25, ge=0, le=1, allow_inf_nan=False)
+    mp_detection_threshold: float = Field(default=0.5, ge=0, le=1, allow_inf_nan=False)
+    mp_presence_threshold: float = Field(default=0.5, ge=0, le=1, allow_inf_nan=False)
+    mp_tracking_threshold: float = Field(default=0.5, ge=0, le=1, allow_inf_nan=False)
+    max_hands: StrictInt = Field(default=4, ge=1, le=16)
+    device: Literal["cpu", "cuda:0"] = "cpu"
+    segment_deadline_seconds: StrictInt = Field(default=600, ge=1)
+    decoder_stall_seconds: StrictInt = Field(default=30, ge=1)
+    output_quota_bytes: StrictInt = Field(default=512 * 1024**2, ge=1)
+    free_disk_reserve_bytes: StrictInt = Field(default=2 * 1024**3, ge=0)
