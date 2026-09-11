@@ -145,3 +145,39 @@ UI, browser evidence, and CUDA regression gates remain pending.
 **M1 verdict: PASS locally.** M1 provides clip/frame/ROI tooling only. Action
 labels `hand_in`, `hand_out`, `take_out`, `put_in`, `unclear`, pilot review and
 training export remain M2/M3 and were not implemented here.
+
+## Clip-bound playback correction — 2026-09-11
+
+- Base HEAD: `c71ab55`. Frontend-only correction; no DB migration, encoder,
+  tracking model, source video, or saved ROI mutation.
+- RED: regression tests reproduced missing saved ROI on tracking players,
+  preview starting at zero instead of the selected frame, and the absent
+  selected-clip tracking action. A further RED caught preview shortcuts
+  intercepting keyboard actions in the newly embedded tracking section.
+- The V2 workspace now loads a tracking result by the selected clip's
+  `source_job_id`, on explicit click, using the existing read-only V1 endpoint.
+  This does not replace the V1 active job. Results from a previous selection
+  are cancelled/discarded. Missing, mismatched, network-error and imported-job
+  cases have explicit UI states; no tracking is started by lookup.
+- Saved ROI is visible during annotation preview and on the two linked
+  tracking players. Source/job mismatch or unavailable source suppresses the
+  overlay. Display geometry reuses the normalized raster/SAR contain helper.
+  Preview resumes at selected frame time; frame selection pauses and returns
+  to exact images. Editing vertices remains disabled during playback.
+- Fresh frontend regression: 9 files / 36 tests passed. Contract drift check,
+  TypeScript and production build passed. The existing Vite native-config
+  warning remains. Backend tests were not repeated for this frontend-only
+  change; prior backend/CUDA evidence above is historical.
+- Real in-app browser at `127.0.0.1:18002`: V1 initially displayed the 15-second
+  excerpt (`e7fdc30c-4c2d-4c0a-ae94-d5e67d1bfc16`). Selecting `shop-30s.mp4`
+  in V2 opened result job `0b84043b-1e7b-42d6-b39e-6d9c16cc3813`, with its
+  saved ROI visible in both source/result players. Result playback worked.
+  Preview selected frame 375 started at approximately 15.17 seconds; after
+  pausing at frame 522, replay began at approximately 21.05 seconds, consistent
+  with 522/25 plus elapsed playback. The 960x1080 SAR 2:1 source and ROI were
+  visually inspected together.
+- Switching to the released ten-minute fixture removed the prior result and
+  reported that the fixture had not run tracking. Returning to V1 restored the
+  original excerpt result, with zero ROI overlays from the other clip.
+- Scope: ROI is a browser overlay, not burned into downloaded MP4 or native
+  video-only fullscreen. This correction does not implement M2 action labels.

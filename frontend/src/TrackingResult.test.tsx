@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it } from "vitest";
 import { TrackingResult } from "./TrackingResult";
 import { JobView } from "./trackingApi";
+import type { ClipView } from "./annotation/types.generated";
 
 afterEach(cleanup);
 const ready: JobView = {
@@ -18,6 +19,23 @@ const ready: JobView = {
   failure_code: null, source_url: "/source", result_url: "/result",
   created_at: "2026-09-10T00:00:00Z", started_at: null, finished_at: null,
 };
+
+it("overlays only the saved ROI belonging to the displayed tracking job", () => {
+  const clip: ClipView = {
+    id: "annotation", source_job_id: "clip", original_name: "clip.mp4", revision: 1,
+    preparation_state: "ready", source_state: "available", failure_code: null, source_sha256: "hash",
+    media: { frame_count: 3, fps_num: 25, fps_den: 1, width: 640, height: 360, sample_aspect_ratio: "1:1" },
+    roi: { id: "roi", revision: 1, camera_setup_id: "camera", template_revision_id: null,
+      polygon: [{ x: .1, y: .1 }, { x: .8, y: .1 }, { x: .8, y: .8 }] },
+    preview_url: "/preview", prepared_bytes: 1,
+  };
+  const { rerender } = render(<TrackingResult job={ready} annotationClip={clip} />);
+  expect(screen.getAllByLabelText("ROI rổ tiền đã lưu")).toHaveLength(2);
+  rerender(<TrackingResult job={{ ...ready, id: "different-job" }} annotationClip={clip} />);
+  expect(screen.queryByLabelText("ROI rổ tiền đã lưu")).not.toBeInTheDocument();
+  rerender(<TrackingResult job={ready} annotationClip={{ ...clip, source_state: "hash_mismatch" }} />);
+  expect(screen.queryByLabelText("ROI rổ tiền đã lưu")).not.toBeInTheDocument();
+});
 
 it("replaces a failed source player with an explanation and resets for a new source", () => {
   const { rerender } = render(<TrackingResult job={ready} />);

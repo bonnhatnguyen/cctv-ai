@@ -3,6 +3,7 @@ import { AnnotationApiError, getClip, getStorage, listClips, listSetups, newOper
 import { ClipList } from "./ClipList";
 import { FrameViewer } from "./FrameViewer";
 import { RoiEditor } from "./RoiEditor";
+import { ClipTracking } from "./ClipTracking";
 import type { CameraSetupView, ClipView, Point, StorageView } from "./types.generated";
 import { useExactFrame } from "./useExactFrame";
 
@@ -118,12 +119,13 @@ export function Workspace({ initialJobId, onBack }: { initialJobId?: string; onB
           {active.preparation_state === "failed" && <p className="error">Chuẩn bị thất bại: {active.failure_code}</p>}
           {active.source_state !== "available" && <p className="error">Video nguồn không còn khớp clip này. ROI đã lưu vẫn được giữ.</p>}
           {active.preparation_state === "ready" && active.media && <>
-            <FrameViewer clip={active} index={index} onIndex={selectIndex} candidate={exact.candidate} onFrameLoaded={exact.confirmLoaded} onFrameError={exact.rejectLoad} playing={playing} onPlaybackChange={setPlaying} points={points}
+            <FrameViewer key={active.id} clip={active} index={index} onIndex={selectIndex} candidate={exact.candidate} onFrameLoaded={exact.confirmLoaded} onFrameError={exact.rejectLoad} playing={playing} onPlaybackChange={setPlaying} points={points}
               onPoint={(point) => { if (frameReady) setPoints((current) => [...current, point]); }}
               onMovePoint={(position, point) => { if (frameReady) setPoints((current) => current.map((value, index) => index === position ? point : value)); }} />
             {exact.loading && <p>Đang tải frame {index}…</p>}{exact.error && <p className="error">{exact.error}</p>}
             <RoiEditor clip={active} frameReady={frameReady} displayed={exact.displayed} points={points} setPoints={setPoints} setups={setups} setSetups={setSetups} onSaved={(clip) => { mergeClip(clip); setPoints(clip.roi?.polygon ?? []); }} />
           </>}
+          <ClipTracking clip={active} />
         </>}
       </section>
     </div>

@@ -1,5 +1,7 @@
 import { useRef, useState } from "react";
 import { JobView, resultDownloadUrl, TrackingStage } from "./trackingApi";
+import type { ClipView } from "./annotation/types.generated";
+import { RoiVideo } from "./annotation/RoiVideo";
 
 const stageLabels: Record<TrackingStage, string> = {
   imported: "Video đã sẵn sàng để bắt đầu",
@@ -16,10 +18,12 @@ function number(value: number, maximumFractionDigits = 1): string {
   return new Intl.NumberFormat("vi-VN", { maximumFractionDigits }).format(value);
 }
 
-export function TrackingResult({ job }: { job: JobView }) {
+export function TrackingResult({ job, annotationClip }: { job: JobView; annotationClip?: ClipView }) {
   const resultVideo = useRef<HTMLVideoElement>(null);
   const [failedSource, setFailedSource] = useState<string | null>(null);
   const summary = job.summary;
+  const roi = annotationClip?.source_job_id === job.id && annotationClip.source_state === "available"
+    ? annotationClip.roi : null;
 
   if (job.status === "imported") return null;
 
@@ -80,7 +84,7 @@ export function TrackingResult({ job }: { job: JobView }) {
         <figure>
           <figcaption>Video gốc</figcaption>
           {job.metadata.preview_supported && failedSource !== job.source_url ? (
-            <video key={job.source_url} aria-label="Video gốc" controls preload="metadata" src={job.source_url}
+            <RoiVideo media={job.metadata} roi={roi} key={job.source_url} aria-label="Video gốc" controls preload="metadata" src={job.source_url}
               onError={() => setFailedSource(job.source_url)} />
           ) : (
             <p className="preview-note">Trình duyệt không hỗ trợ xem trước video gốc này.</p>
@@ -88,13 +92,15 @@ export function TrackingResult({ job }: { job: JobView }) {
         </figure>
         <figure>
           <figcaption>Video đã theo dõi</figcaption>
-          <video ref={resultVideo} aria-label="Video đã theo dõi" controls preload="metadata" src={job.result_url} />
+          <RoiVideo media={job.metadata} roi={roi} key={job.result_url} ref={resultVideo} aria-label="Video đã theo dõi" controls preload="metadata" src={job.result_url} />
           <div className="result-actions">
             <button className="secondary" type="button" onClick={replay}>Phát lại video kết quả</button>
             <a className="primary-link" href={download}>Tải video kết quả</a>
           </div>
         </figure>
       </div>
+
+      {roi && <p className="preview-note">ROI đã lưu được hiển thị trên trang này. Tệp MP4 tải xuống và chế độ toàn màn hình riêng của video không chứa lớp ROI.</p>}
 
       <div className="metrics">
         <h3>Số liệu đo được</h3>

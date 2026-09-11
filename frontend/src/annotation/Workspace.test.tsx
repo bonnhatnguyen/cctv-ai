@@ -35,6 +35,32 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+it("opens tracking for the selected V2 clip instead of the unrelated V1 job", async () => {
+  localStorage.setItem("v1-active-tracking-job", "unrelated-v1-job");
+  vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+    if (url === "/api/v2/annotations/storage") return json({ used_bytes: 1, limit_bytes: 100, free_bytes: 100 });
+    if (url.includes("/frames/")) return new Response(new Blob(["png"]), { headers: { "X-Frame-Index": "0", "X-Source-SHA256": ready.source_sha256! } });
+    if (url.startsWith("/api/v2/annotations/setups")) return json({ items: [], next_cursor: null });
+    if (url.startsWith("/api/v2/annotations/clips")) return json({ items: [ready], next_cursor: null });
+    if (url === `/api/v1/jobs/${ready.source_job_id}`) return json({
+      id: ready.source_job_id, original_name: "shop.mp4", status: "ready", stage: "ready",
+      metadata: { ...ready.media, size_bytes: 1, duration_ms: 320, frame_count_estimate: 8, codec: "h264", preview_supported: true },
+      processed_frames: 8, total_frames_estimate: 8, tracking_percent: 100,
+      summary: { actual_device: "cpu", device_name: "CPU", processed_frames: 8, local_track_count: 1,
+        inference_samples: 0, mean_inference_ms: null, tracking_wall_ms_total: 1, processing_seconds: 1, effective_fps: 8, output_duration_ms: 320 },
+      failure_code: null, source_url: "/selected/source", result_url: "/selected/result",
+      created_at: "2026-09-11T00:00:00Z", started_at: null, finished_at: null,
+    });
+    throw new Error(`Unexpected ${url}`);
+  }));
+  render(<Workspace initialJobId="unrelated-v1-job" onBack={() => undefined} />);
+  fireEvent.click(await screen.findByRole("button", { name: /Mở shop.mp4/i }));
+  fireEvent.click(screen.getByRole("button", { name: "Xem tracking của clip này" }));
+  expect(await screen.findByLabelText("Video đã theo dõi")).toHaveAttribute("src", "/selected/result");
+  expect(screen.getByLabelText("Video gốc")).toHaveAttribute("src", "/selected/source");
+  expect(localStorage.getItem("v1-active-tracking-job")).toBe("unrelated-v1-job");
+});
+
 it("registers an imported job without calling tracking start", async () => {
   const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     if (url === "/api/v2/annotations/storage") return json({ used_bytes: 1234, limit_bytes: 20 * 1024 ** 3, free_bytes: 100 * 1024 ** 3 });

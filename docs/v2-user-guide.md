@@ -32,6 +32,22 @@ không công bố đường dẫn filesystem.
 ROI dùng tọa độ chuẩn hóa trên đúng vùng ảnh sau khi áp dụng sample aspect
 ratio (SAR), nên không bị lệch khi cửa sổ hoặc độ phân giải hiển thị thay đổi.
 
+## Xem lại ROI và kết quả tracking đúng clip
+
+Trong workspace, **Phát preview** phát video của clip đang chọn từ frame hiện
+tại và hiển thị ROI đã lưu của chính clip đó. Khi phát, ROI chỉ để xem; bản
+vẽ chưa lưu không thay thế ROI đã lưu. Chọn frame bằng thanh trượt hoặc ô Frame
+sẽ dừng preview và tải ảnh chính xác để tiếp tục chỉnh sửa.
+
+**Xem tracking của clip này** mở kết quả ngay bên dưới, dùng liên kết job nguồn
+của clip đang chọn. Nếu chưa chạy tracking, ứng dụng báo rõ; không lấy kết quả
+của video khác. Thao tác này không tự chạy tracking hoặc đổi video đang mở ở
+V1. **Quay lại theo dõi** giữ nguyên video V1 trước đó.
+
+ROI được phủ trên hai player của kết quả liên kết; lớp phủ này chỉ hiển thị
+trên trang, không được ghi vào MP4 tải xuống hoặc fullscreen riêng của video.
+Mỗi clip giữ ROI riêng; tên file/cùng camera không tự gắn ROI sang clip khác.
+
 ## Mẫu camera và revision
 
 **Lưu làm mẫu** tạo một revision mẫu riêng cho camera. Khi dùng mẫu, bấm

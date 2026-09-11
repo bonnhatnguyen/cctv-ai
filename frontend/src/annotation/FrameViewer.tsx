@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { normalizePoint } from "./geometry";
+import { fittedImageRect, normalizePoint } from "./geometry";
 import type { ClipView, Point } from "./types.generated";
 import type { FrameCandidate, FrameToken } from "./useExactFrame";
 
@@ -24,29 +24,34 @@ export function FrameViewer({ clip, index, onIndex, candidate, onFrameLoaded, on
   const video = useRef<HTMLVideoElement>(null);
   const plane = useRef<HTMLDivElement>(null);
   const [playbackRate, setPlaybackRate] = useState(1);
+  const [playbackError, setPlaybackError] = useState<string | null>(null);
   const dragging = useRef<number | null>(null);
   const dragged = useRef(false);
   const media = clip.media!;
   const [sarNum, sarDen] = sar(media.sample_aspect_ratio);
-  const displayAspect = media.width * sarNum / (media.height * sarDen);
-  const stageAspect = 16 / 9;
-  const planeSize = displayAspect >= stageAspect
-    ? { width: "100%", height: `${100 * stageAspect / displayAspect}%` }
-    : { width: `${100 * displayAspect / stageAspect}%`, height: "100%" };
-  const setPlaying = async () => {
+  const rect = fittedImageRect({ left: 0, top: 0, width: 16, height: 9 }, media.width, media.height, sarNum, sarDen);
+  const planeSize = { width: `${rect.width / 16 * 100}%`, height: `${rect.height / 9 * 100}%` };
+  const stopAtFrame = (frame: number) => {
+    video.current?.pause();
+    onPlaybackChange(false);
+    onIndex(Math.max(0, Math.min(media.frame_count - 1, frame)));
+  };
+  const setPlaying = () => {
+    setPlaybackError(null);
     if (playing) {
-      video.current?.pause();
-      onPlaybackChange(false);
       const frame = Math.round((video.current?.currentTime ?? 0) * media.fps_num / media.fps_den);
-      onIndex(Math.max(0, Math.min(media.frame_count - 1, frame)));
+      stopAtFrame(frame);
     } else {
-      await video.current?.play();
       onPlaybackChange(true);
     }
+  };
+  const chooseFrame = (value: number) => {
+    if (Number.isInteger(value)) stopAtFrame(value);
   };
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
+      if (target?.closest(".clip-tracking")) return;
       if (target && (["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName) || target.isContentEditable)) return;
       if (event.key === " " || event.key === "ArrowLeft" || event.key === "ArrowRight") event.preventDefault();
       if (event.key === " ") void setPlaying();
@@ -57,6 +62,7 @@ export function FrameViewer({ clip, index, onIndex, candidate, onFrameLoaded, on
     return () => window.removeEventListener("keydown", key);
   });
   const click = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (playing) return;
     if (dragged.current) {
       dragged.current = false;
       return;
@@ -69,7 +75,7 @@ export function FrameViewer({ clip, index, onIndex, candidate, onFrameLoaded, on
     <div className="roi-stage" data-testid="roi-stage">
       <div ref={plane} className="media-plane" data-testid="media-plane" onClick={click}
         onPointerMove={(event) => {
-          if (dragging.current === null || !onMovePoint) return;
+          if (playing || dragging.current === null || !onMovePoint) return;
           const point = normalizePoint(event.clientX, event.clientY, event.currentTarget.getBoundingClientRect());
           if (point) {
             dragged.current = true;
@@ -79,9 +85,19 @@ export function FrameViewer({ clip, index, onIndex, candidate, onFrameLoaded, on
         onPointerUp={() => { dragging.current = null; }}
         onPointerCancel={() => { dragging.current = null; }}
         style={{ ...planeSize, aspectRatio: `${media.width * sarNum} / ${media.height * sarDen}` }}>
-      {playing && clip.preview_url && <video ref={video} autoPlay muted src={clip.preview_url} style={{ objectFit: "fill" }}
-        onLoadedMetadata={(event) => { event.currentTarget.playbackRate = playbackRate; }}
-        onPause={() => onPlaybackChange(false)} />}
+      {playing && clip.preview_url && <video ref={video} muted src={clip.preview_url} style={{ objectFit: "fill" }}
+        onLoadedMetadata={(event) => {
+          const element = event.currentTarget;
+          element.currentTime = index * media.fps_den / media.fps_num;
+          element.playbackRate = playbackRate;
+          void element.play().catch(() => {
+            if (video.current !== element) return;
+            setPlaybackError("Không thể phát preview. Hãy thử lại.");
+            onPlaybackChange(false);
+          });
+        }}
+        onEnded={() => stopAtFrame(media.frame_count - 1)}
+        onError={() => { setPlaybackError("Không thể đọc preview của clip này."); onPlaybackChange(false); }} />}
       {!playing && candidate && <img style={{ objectFit: "fill" }}
         data-testid="exact-frame"
         data-clip-id={candidate.token.clipId}
@@ -93,13 +109,16 @@ export function FrameViewer({ clip, index, onIndex, candidate, onFrameLoaded, on
         onLoad={() => onFrameLoaded(candidate.token)}
         onError={() => onFrameError(candidate.token)}
       />}
-      {!playing && <svg className="roi-overlay" viewBox="0 0 1 1" preserveAspectRatio="none" aria-label="ROI rổ tiền">
-        {points.length > 1 && <polyline points={points.map((p) => `${p.x},${p.y}`).join(" ")} fill="rgba(55,210,125,.16)" stroke="#56f09b" strokeWidth=".006" />}
-        {points.map((point, position) => <circle key={position} data-testid="roi-point" className="roi-point" cx={point.x} cy={point.y} r=".012" fill="#fff" stroke="#1c9c5b" strokeWidth=".005"
+      <svg className="roi-overlay" viewBox="0 0 1 1" preserveAspectRatio="none" aria-label="ROI rổ tiền">
+        {playing && clip.roi && <polygon points={clip.roi.polygon.map((p) => `${p.x},${p.y}`).join(" ")} fill="rgba(55,210,125,.16)" stroke="#56f09b" strokeWidth=".006" />}
+        {!playing && points.length > 1 && <polyline points={points.map((p) => `${p.x},${p.y}`).join(" ")} fill="rgba(55,210,125,.16)" stroke="#56f09b" strokeWidth=".006" />}
+        {!playing && points.map((point, position) => <circle key={position} data-testid="roi-point" className="roi-point" cx={point.x} cy={point.y} r=".012" fill="#fff" stroke="#1c9c5b" strokeWidth=".005"
           onPointerDown={(event) => { event.stopPropagation(); dragging.current = position; dragged.current = false; }} />)}
-      </svg>}
+      </svg>
       </div>
     </div>
+    {playbackError && <p className="error" role="alert">{playbackError}</p>}
+    {playing && <p className="preview-note">{clip.roi ? "Đang hiển thị ROI đã lưu của clip này." : "Clip này chưa có ROI đã lưu."}</p>}
     <div className="frame-controls">
       <button type="button" onClick={() => void setPlaying()}>{playing ? "Tạm dừng" : "Phát preview"}</button>
       <label>Tốc độ preview <select value={playbackRate} onChange={(event) => {
@@ -107,8 +126,8 @@ export function FrameViewer({ clip, index, onIndex, candidate, onFrameLoaded, on
         setPlaybackRate(rate);
         if (video.current) video.current.playbackRate = rate;
       }}><option value="0.25">0,25×</option><option value="0.5">0,5×</option><option value="1">1×</option></select></label>
-      <input type="range" min={0} max={media.frame_count - 1} value={index} onChange={(e) => onIndex(Number(e.target.value))} aria-label="Chọn khung hình" />
-      <label>Frame <input data-testid="annotation-frame-input" type="number" min={0} max={media.frame_count - 1} value={index} onChange={(e) => onIndex(Math.max(0, Math.min(media.frame_count - 1, Number(e.target.value))))} /></label>
+      <input type="range" min={0} max={media.frame_count - 1} value={index} onChange={(e) => chooseFrame(Number(e.target.value))} aria-label="Chọn khung hình" />
+      <label>Frame <input data-testid="annotation-frame-input" type="number" min={0} max={media.frame_count - 1} value={index} onChange={(e) => chooseFrame(Number(e.target.value))} /></label>
     </div>
   </div>;
 }
