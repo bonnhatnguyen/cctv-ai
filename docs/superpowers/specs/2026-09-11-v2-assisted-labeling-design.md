@@ -1,8 +1,8 @@
 # V2 — hỗ trợ gán nhãn tay quanh ROI
 
-Ngày: 2026-09-11. Trạng thái: hướng tiếp cận đã được người dùng duyệt;
-bản đặc tả này chờ review trước khi viết implementation plan. Chưa chạy
-benchmark model, chưa thay đổi runtime hoặc dữ liệu người dùng.
+Ngày: 2026-09-11. Trạng thái: người dùng đã duyệt và yêu cầu viết plan bổ sung.
+Plan chặng A: `../plans/2026-09-11-v2-assisted-labeling-benchmark.md`.
+Chưa chạy benchmark model, chưa thay đổi runtime hoặc dữ liệu người dùng.
 
 ## 1. Vị trí và phạm vi
 
