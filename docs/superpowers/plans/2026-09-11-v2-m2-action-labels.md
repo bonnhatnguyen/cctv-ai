@@ -60,11 +60,11 @@
 - Produces GET workspace and mutation functions used by Task 3.
 - Error mapping remains path-free and uses `annotation_not_found`, `annotation_conflict`, `invalid_annotation_request`, and `source_unavailable`.
 
-- [ ] Write RED API tests for workspace load and every mutation, including malformed frames, label semantics, stale revision, idempotent retry, and no path leakage.
-- [ ] Add clip-scoped routes for workspace, interactions, events, event lifecycle, confirmation, and review coverage. Return the latest `ActionWorkspaceView` after mutations so UI state and clip revision move together.
-- [ ] Extend the offline generator mapping for literals, optionals, arrays, and the new DTOs; regenerate outputs and verify drift detection.
-- [ ] Add structured frontend API calls with AbortSignal and stable operation IDs supplied by the editor.
-- [ ] Run annotation API tests, generator check, TypeScript build, and commit `feat(v2): expose action annotation API`.
+- [x] Write RED API tests for workspace load and every mutation, including malformed frames, label semantics, stale revision, idempotent retry, and no path leakage.
+- [x] Add clip-scoped routes for workspace, interactions, events, event lifecycle, confirmation, and review coverage. Return the latest `ActionWorkspaceView` after mutations so UI state and clip revision move together.
+- [x] Extend the offline generator mapping for literals, optionals, arrays, and the new DTOs; regenerate outputs and verify drift detection.
+- [x] Add structured frontend API calls with AbortSignal and stable operation IDs supplied by the editor.
+- [x] Run annotation API tests, generator check, TypeScript build, and commit `feat(v2): expose action annotation API`.
 
 ### Task 3: Ordered annotation workspace, event editor, and timeline
 

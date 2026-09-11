@@ -13,16 +13,27 @@ if str(BACKEND) not in sys.path:
     sys.path.insert(0, str(BACKEND))
 
 from app.annotation.contracts import (  # noqa: E402
+    AnnotationConflictDetail,
+    ActionAnnotationCreate,
+    ActionAnnotationUpdate,
+    ActionAnnotationView,
+    ActionMutation,
+    ActionWorkspaceView,
     CameraSetupCreate,
     CameraSetupListView,
     CameraSetupView,
     ClipListView,
     ClipView,
     ErrorView,
+    InteractionCreate,
+    InteractionUpdate,
+    InteractionView,
     MediaView,
     Point,
     RegisterClip,
     ReleasePreparedMedia,
+    ReviewCoverageView,
+    ReviewCoverageWrite,
     RetryPreparation,
     RoiView,
     RoiWrite,
@@ -32,6 +43,7 @@ from app.annotation.contracts import (  # noqa: E402
 
 
 MODELS = [
+    AnnotationConflictDetail,
     Point,
     RegisterClip,
     RoiWrite,
@@ -47,6 +59,16 @@ MODELS = [
     ErrorView,
     ClipListView,
     CameraSetupListView,
+    InteractionCreate,
+    InteractionUpdate,
+    InteractionView,
+    ActionAnnotationCreate,
+    ActionAnnotationUpdate,
+    ActionMutation,
+    ActionAnnotationView,
+    ReviewCoverageWrite,
+    ReviewCoverageView,
+    ActionWorkspaceView,
 ]
 SCHEMA_PATH = ROOT / "frontend" / "src" / "annotation" / "schema.generated.json"
 TYPES_PATH = ROOT / "frontend" / "src" / "annotation" / "types.generated.ts"

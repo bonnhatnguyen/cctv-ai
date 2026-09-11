@@ -100,8 +100,13 @@ class StorageView(Dto):
     free_bytes: StrictInt = Field(ge=0)
 
 
+class AnnotationConflictDetail(Dto):
+    code: Literal["annotation_conflict"]
+    conflicting_annotation_id: UUID
+
+
 class ErrorView(Dto):
-    detail: str
+    detail: str | AnnotationConflictDetail
 
 
 class ClipListView(Dto):

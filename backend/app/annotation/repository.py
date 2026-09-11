@@ -51,6 +51,12 @@ class RevisionConflict(RuntimeError):
     pass
 
 
+class AnnotationOverlapConflict(RevisionConflict):
+    def __init__(self, conflicting_annotation_id: UUID) -> None:
+        self.conflicting_annotation_id = conflicting_annotation_id
+        super().__init__(f"action overlaps conflicting annotation {conflicting_annotation_id}")
+
+
 class PayloadConflict(RuntimeError):
     pass
 
@@ -453,9 +459,7 @@ class AnnotationRepository:
             elif becoming_confirmed and row["label"] == "unclear":
                 conflict = label in set(json.loads(row["uncertain_labels_json"]))
             if conflict:
-                raise RevisionConflict(
-                    f"action overlaps conflicting annotation {row['id']}"
-                )
+                raise AnnotationOverlapConflict(UUID(row["id"]))
 
     @classmethod
     def _invalidate_for_roi(

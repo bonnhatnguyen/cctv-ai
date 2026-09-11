@@ -24,7 +24,9 @@ def test_generated_contracts_are_deterministic_and_strict():
     second_schema, second_types = generator.generated_outputs()
     assert (first_schema, first_types) == (second_schema, second_types)
     assert "export interface ClipView" in first_types
-    assert "hand_in" not in first_types
+    assert "export interface ActionWorkspaceView" in first_types
+    for label in ("hand_in", "hand_out", "take_out", "put_in", "unclear"):
+        assert label in first_types
     assert "any" not in first_types
 
 

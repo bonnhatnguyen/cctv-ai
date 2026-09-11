@@ -9,19 +9,26 @@ from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 from fastapi.responses import StreamingResponse
 
 from .contracts import (
+    ActionAnnotationCreate,
+    ActionAnnotationUpdate,
+    ActionMutation,
+    ActionWorkspaceView,
     CameraSetupCreate,
     CameraSetupListView,
     CameraSetupView,
     ClipListView,
     ClipView,
+    InteractionCreate,
+    InteractionUpdate,
     RegisterClip,
     ReleasePreparedMedia,
+    ReviewCoverageWrite,
     RetryPreparation,
     RoiWrite,
     StorageView,
     TemplateWrite,
 )
-from .database import root_fingerprint
+from .database import SCHEMA_VERSION, root_fingerprint
 from .frames import (
     FrameIntegrityError,
     FrameOutOfRange,
@@ -32,6 +39,7 @@ from .frames import (
 )
 from .media import StorageFull
 from .repository import (
+    AnnotationOverlapConflict,
     AnnotationRepository,
     ClipNotReady,
     NotFound,
@@ -47,6 +55,14 @@ def _raise_domain_error(exc: Exception) -> None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "annotation_not_found") from exc
     if isinstance(exc, FrameOutOfRange):
         raise HTTPException(status.HTTP_416_RANGE_NOT_SATISFIABLE, "frame_out_of_range") from exc
+    if isinstance(exc, AnnotationOverlapConflict):
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            {
+                "code": "annotation_conflict",
+                "conflicting_annotation_id": str(exc.conflicting_annotation_id),
+            },
+        ) from exc
     if isinstance(exc, (RevisionConflict, PayloadConflict, ClipNotReady)):
         raise HTTPException(status.HTTP_409_CONFLICT, "annotation_conflict") from exc
     if isinstance(exc, (SourceUnavailable, SourceChanged)):
@@ -236,11 +252,106 @@ def create_router(
         except Exception as exc:
             _raise_domain_error(exc)
 
+    @router.get("/clips/{clip_id}/actions", response_model=ActionWorkspaceView)
+    def get_action_workspace(clip_id: UUID):
+        try:
+            return repository.get_action_workspace(clip_id)
+        except Exception as exc:
+            _raise_domain_error(exc)
+
+    @router.post(
+        "/clips/{clip_id}/interactions",
+        response_model=ActionWorkspaceView,
+        status_code=status.HTTP_201_CREATED,
+    )
+    def create_interaction(clip_id: UUID, request: InteractionCreate):
+        try:
+            return repository.create_interaction(clip_id, request)
+        except Exception as exc:
+            _raise_domain_error(exc)
+
+    @router.put(
+        "/clips/{clip_id}/interactions/{interaction_id}",
+        response_model=ActionWorkspaceView,
+    )
+    def update_interaction(
+        clip_id: UUID, interaction_id: UUID, request: InteractionUpdate
+    ):
+        try:
+            return repository.update_interaction(clip_id, interaction_id, request)
+        except Exception as exc:
+            _raise_domain_error(exc)
+
+    @router.post(
+        "/clips/{clip_id}/actions",
+        response_model=ActionWorkspaceView,
+        status_code=status.HTTP_201_CREATED,
+    )
+    def create_action(clip_id: UUID, request: ActionAnnotationCreate):
+        try:
+            return repository.create_action(clip_id, request)
+        except Exception as exc:
+            _raise_domain_error(exc)
+
+    @router.put(
+        "/clips/{clip_id}/actions/{annotation_id}",
+        response_model=ActionWorkspaceView,
+    )
+    def update_action(
+        clip_id: UUID, annotation_id: UUID, request: ActionAnnotationUpdate
+    ):
+        try:
+            return repository.update_action(clip_id, annotation_id, request)
+        except Exception as exc:
+            _raise_domain_error(exc)
+
+    @router.post(
+        "/clips/{clip_id}/actions/{annotation_id}/confirm",
+        response_model=ActionWorkspaceView,
+    )
+    def confirm_action(clip_id: UUID, annotation_id: UUID, request: ActionMutation):
+        try:
+            return repository.confirm_action(clip_id, annotation_id, request)
+        except Exception as exc:
+            _raise_domain_error(exc)
+
+    @router.post(
+        "/clips/{clip_id}/actions/{annotation_id}/delete",
+        response_model=ActionWorkspaceView,
+    )
+    def delete_action(clip_id: UUID, annotation_id: UUID, request: ActionMutation):
+        try:
+            return repository.delete_action(clip_id, annotation_id, request)
+        except Exception as exc:
+            _raise_domain_error(exc)
+
+    @router.post(
+        "/clips/{clip_id}/actions/{annotation_id}/restore",
+        response_model=ActionWorkspaceView,
+    )
+    def restore_action(clip_id: UUID, annotation_id: UUID, request: ActionMutation):
+        try:
+            return repository.restore_action(clip_id, annotation_id, request)
+        except Exception as exc:
+            _raise_domain_error(exc)
+
+    @router.post(
+        "/clips/{clip_id}/review-coverage",
+        response_model=ActionWorkspaceView,
+        status_code=status.HTTP_201_CREATED,
+    )
+    def create_review_coverage(clip_id: UUID, request: ReviewCoverageWrite):
+        try:
+            return repository.create_review_coverage(clip_id, request)
+        except Exception as exc:
+            _raise_domain_error(exc)
+
     @router.get("/health")
     def health():
         return {
             "service": "basket-annotation",
             "schema_version": 1,
+            "database_schema_version": SCHEMA_VERSION,
             "instance_id": instance_id,
             "data_root_fingerprint": root_fingerprint(repository.database.source_data_root),
             "ready": True,
