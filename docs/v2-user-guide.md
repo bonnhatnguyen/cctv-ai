@@ -1,8 +1,8 @@
-# Hướng dẫn V2 M1 — khoanh ROI rổ tiền
+# Hướng dẫn V2 — ROI và dán nhãn hành động
 
-V2 M1 chạy cục bộ trên máy và chỉ thêm công cụ mở clip, xem đúng khung hình
-nguồn, rồi khoanh/lưu vùng rổ tiền cố định. M1 **chưa gán nhãn hành động** và
-không tự suy luận `hand_in`, `hand_out`, lấy tiền hay bỏ tiền.
+V2 chạy cục bộ trên máy. Giai đoạn 1 mở clip, xem đúng khung hình nguồn và
+khoanh/lưu vùng rổ tiền cố định. Giai đoạn 2 cho người vận hành tự gán và kiểm
+tra năm nhãn hành động; ứng dụng **chưa có model tự suy luận hành động**.
 
 ## Mở clip
 
@@ -31,6 +31,52 @@ không công bố đường dẫn filesystem.
 
 ROI dùng tọa độ chuẩn hóa trên đúng vùng ảnh sau khi áp dụng sample aspect
 ratio (SAR), nên không bị lệch khi cửa sổ hoặc độ phân giải hiển thị thay đổi.
+
+## Gán nhãn hành động
+
+Sau khi ROI đã lưu, chọn bước **Gán nhãn**:
+
+1. Chọn một **Lượt tay** đã có hoặc tạo lượt mới với tay trái, tay phải hay
+   chưa rõ. Tracking là tham chiếu tùy chọn, không bắt buộc để gán nhãn.
+2. Chọn đúng frame rồi dùng `I` đặt bắt đầu, `C` đặt frame qua biên và `O` đặt
+   kết thúc. `C` chỉ áp dụng cho `hand_in` và `hand_out`.
+3. Chọn nhãn bằng phím `1`–`5`: `hand_in`, `hand_out`, `take_out`, `put_in`,
+   `unclear`. `unclear` có thể gắn cho toàn ROI khi không xác định được lượt
+   tay, nhưng phải chọn lớp có thể xảy ra và lý do chưa rõ.
+4. Chọn vật và mức quan sát, rồi bấm **Lưu nhãn** hoặc `Ctrl+S`. `Escape` bỏ
+   bản nháp. Các khoảng chồng nhau được giữ thành những event riêng, không tự
+   gộp.
+
+Chọn một dòng trên timeline sẽ dừng video, tới đúng frame bắt đầu và mở event
+để sửa. Có thể xác nhận, xóa mềm và khôi phục. Nếu mất kết nối, thử lại bản
+nháp không tạo event trùng. Nếu tab khác đã sửa dữ liệu, ứng dụng tải revision
+mới nhưng giữ bản nháp. Khi ROI đã đổi, overlay được đồng bộ và các mốc `I/C/O`
+cũ bị xóa để bắt buộc đánh dấu lại trên ROI mới.
+
+## Kiểm tra event và coverage
+
+Ở bước **Kiểm tra**, xác nhận từng event sau khi xem lại hình ảnh. Xác nhận một
+event chỉ nói rằng event đó đúng; nó không có nghĩa phần còn lại của video là
+“không có hành động”.
+
+Muốn xác nhận đã tìm đủ sự kiện trong một đoạn, đặt frame bắt đầu/kết thúc ở
+**Phạm vi đã kiểm tra**, chọn riêng từng lớp đã xem hết và đánh dấu câu xác
+nhận trước khi ghi. Chỉ coverage đang hiệu lực mới có thể tạo background cho
+đúng lớp đó ở giai đoạn xuất dataset. Đoạn chưa có coverage luôn là **chưa
+biết**. Khi event hoặc ROI liên quan thay đổi, coverage bị ảnh hưởng được vô
+hiệu hóa và vẫn còn trong lịch sử để audit.
+
+## Pilot guideline trước khi gán hàng loạt
+
+Pilot cần cố định trước 20 đoạn, tối thiểu hai ví dụ cho mỗi nhãn rõ, hai
+`unclear` và hai đoạn đã review không có hành động. Gán lượt một, chờ ít nhất
+24 giờ, rồi dùng lịch xáo trộn mù cho lượt hai. Không xem nhãn lượt một trong
+lượt hai.
+
+`scripts/verify-v2-m2-pilot.py` kiểm manifest và tính agreement, temporal IoU
+một-một cùng sai lệch crossing frame. Nếu video không đủ một lớp, ghi
+`PENDING_DATA`; không đổi một hành động khác thành lớp còn thiếu. Công cụ này
+đo độ nhất quán của guideline/người gán, không phải độ chính xác model.
 
 ## Xem lại ROI và kết quả tracking đúng clip
 

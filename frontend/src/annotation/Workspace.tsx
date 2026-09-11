@@ -4,6 +4,7 @@ import { ClipList } from "./ClipList";
 import { FrameViewer } from "./FrameViewer";
 import { RoiEditor } from "./RoiEditor";
 import { ClipTracking } from "./ClipTracking";
+import { ActionWorkspace } from "./ActionWorkspace";
 import type { CameraSetupView, ClipView, Point, StorageView } from "./types.generated";
 import { useExactFrame } from "./useExactFrame";
 
@@ -20,9 +21,12 @@ export function Workspace({ initialJobId, onBack }: { initialJobId?: string; onB
   const [loading, setLoading] = useState(true);
   const [storage, setStorage] = useState<StorageView | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [mode, setMode] = useState<"roi" | "annotate" | "review">("roi");
+  const [actionDirty, setActionDirty] = useState(false);
   const exact = useExactFrame(active?.id ?? "", active?.source_sha256 ?? null, index);
   const frameReady = useMemo(() => !playing && exact.displayed !== null && exact.displayed.index === index && exact.displayed.clipId === active?.id, [playing, exact.displayed, index, active?.id]);
-  const dirty = Boolean(active) && JSON.stringify(points) !== JSON.stringify(active?.roi?.polygon ?? []);
+  const roiDirty = Boolean(active) && JSON.stringify(points) !== JSON.stringify(active?.roi?.polygon ?? []);
+  const dirty = roiDirty || actionDirty;
 
   const mergeClip = (clip: ClipView) => {
     setClips((current) => current.some((item) => item.id === clip.id)
@@ -65,6 +69,8 @@ export function Workspace({ initialJobId, onBack }: { initialJobId?: string; onB
     setIndex(initial);
     setPoints(active.roi?.polygon ?? []);
     setPlaying(false);
+    setMode(active.roi ? "annotate" : "roi");
+    setActionDirty(false);
   }, [active?.id]);
   const selectIndex = (value: number) => {
     setIndex(value);
@@ -95,15 +101,20 @@ export function Workspace({ initialJobId, onBack }: { initialJobId?: string; onB
     setNextCursor(page.next_cursor);
   };
   const open = (clip: ClipView) => {
-    if (active?.id !== clip.id && dirty && !window.confirm("ROI chưa lưu sẽ bị bỏ. Mở clip khác?")) return;
+    const warning = roiDirty ? "ROI chưa lưu sẽ bị bỏ. Mở clip khác?" : "Nhãn chưa lưu sẽ bị bỏ. Mở clip khác?";
+    if (active?.id !== clip.id && dirty && !window.confirm(warning)) return;
     setActive(clip);
   };
   const back = () => {
-    if (!dirty || window.confirm("ROI chưa lưu sẽ bị bỏ. Quay lại?")) onBack();
+    if (!dirty || window.confirm("Thay đổi chưa lưu sẽ bị bỏ. Quay lại?")) onBack();
+  };
+  const changeMode = (next: typeof mode) => {
+    if (next !== mode && dirty && !window.confirm("Thay đổi chưa lưu sẽ bị bỏ. Chuyển bước?")) return;
+    setMode(next);
   };
 
   return <main className="annotation-workspace">
-    <header className="workspace-header"><div><p className="eyebrow">V2 · dữ liệu riêng tư trên máy</p><h1>Khoanh ROI rổ tiền</h1></div><button type="button" className="secondary" onClick={back}>Quay lại theo dõi</button></header>
+    <header className="workspace-header"><div><p className="eyebrow">V2 · dữ liệu riêng tư trên máy</p><h1>Gán nhãn hành động quanh rổ</h1></div><button type="button" className="secondary" onClick={back}>Quay lại theo dõi</button></header>
     {initialJobId && <section className="annotation-start"><p>Mở video vừa nhập để khoanh vùng cố định; không cần chạy person tracking.</p><button className="primary" type="button" onClick={() => void begin()}>Khoanh rổ tiền</button></section>}
     {error && <p className="error" role="alert">{error}</p>}
     <div className="workspace-grid">
@@ -114,18 +125,25 @@ export function Workspace({ initialJobId, onBack }: { initialJobId?: string; onB
         {loading && <p>Đang tải danh sách clip…</p>}
         {!loading && !active && <p className="preview-note">Chọn một clip hoặc mở video vừa nhập.</p>}
         {active && <><h2>{active.original_name}</h2>
+          <nav className="workspace-steps" aria-label="Các bước annotation">
+            <button type="button" aria-current={mode === "roi" ? "step" : undefined} onClick={() => changeMode("roi")}><span>1</span>Vùng rổ</button>
+            <button type="button" aria-current={mode === "annotate" ? "step" : undefined} disabled={!active.roi} onClick={() => changeMode("annotate")}><span>2</span>Gán nhãn</button>
+            <button type="button" aria-current={mode === "review" ? "step" : undefined} disabled={!active.roi} onClick={() => changeMode("review")}><span>3</span>Kiểm tra</button>
+          </nav>
           {active.preparation_state === "preparing" && <p>Đang chuẩn bị frame chính xác và preview sạch…</p>}
           {active.preparation_state === "releasing" && <p>Đang giải phóng bản xem tạm…</p>}
           {active.preparation_state === "failed" && <p className="error">Chuẩn bị thất bại: {active.failure_code}</p>}
           {active.source_state !== "available" && <p className="error">Video nguồn không còn khớp clip này. ROI đã lưu vẫn được giữ.</p>}
           {active.preparation_state === "ready" && active.media && <>
             <FrameViewer key={active.id} clip={active} index={index} onIndex={selectIndex} candidate={exact.candidate} onFrameLoaded={exact.confirmLoaded} onFrameError={exact.rejectLoad} playing={playing} onPlaybackChange={setPlaying} points={points}
-              onPoint={(point) => { if (frameReady) setPoints((current) => [...current, point]); }}
-              onMovePoint={(position, point) => { if (frameReady) setPoints((current) => current.map((value, index) => index === position ? point : value)); }} />
+              editable={mode === "roi"}
+              onPoint={(point) => { if (frameReady && mode === "roi") setPoints((current) => [...current, point]); }}
+              onMovePoint={(position, point) => { if (frameReady && mode === "roi") setPoints((current) => current.map((value, index) => index === position ? point : value)); }} />
             {exact.loading && <p>Đang tải frame {index}…</p>}{exact.error && <p className="error">{exact.error}</p>}
-            <RoiEditor clip={active} frameReady={frameReady} displayed={exact.displayed} points={points} setPoints={setPoints} setups={setups} setSetups={setSetups} onSaved={(clip) => { mergeClip(clip); setPoints(clip.roi?.polygon ?? []); }} />
+            {mode === "roi" && <RoiEditor clip={active} frameReady={frameReady} displayed={exact.displayed} points={points} setPoints={setPoints} setups={setups} setSetups={setSetups} onSaved={(clip) => { mergeClip(clip); setPoints(clip.roi?.polygon ?? []); setMode("annotate"); }} />}
+            {mode !== "roi" && active.roi && <ActionWorkspace key={`${active.id}:${mode}`} clip={active} index={index} onIndex={(value) => { setPlaying(false); selectIndex(value); }} frameReady={frameReady} reviewOnly={mode === "review"} onDirtyChange={setActionDirty} onClipRevision={(revision) => mergeClip({ ...active, revision })} onClipReload={(latest) => { mergeClip(latest); setPoints(latest.roi?.polygon ?? []); setPlaying(false); }} />}
           </>}
-          <ClipTracking clip={active} />
+          {mode === "roi" && <ClipTracking clip={active} />}
         </>}
       </section>
     </div>

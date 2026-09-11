@@ -146,6 +146,54 @@ UI, browser evidence, and CUDA regression gates remain pending.
 labels `hand_in`, `hand_out`, `take_out`, `put_in`, `unclear`, pilot review and
 training export remain M2/M3 and were not implemented here.
 
+## M2 / action labeling software gate — 2026-09-11
+
+- Base implementation starts after `073f80a`. The action workspace now follows
+  the fixed order **Vùng rổ → Gán nhãn → Kiểm tra** and reuses the M1 player,
+  exact-frame state and saved ROI instead of introducing a second video state.
+- The UI creates/selects hand interactions and supports the exact five labels,
+  I/C/O frame capture, 1–5 label shortcuts, Ctrl+S, Escape, conditional unclear
+  metadata, editing, confirmation, tombstone deletion/restoration and a
+  non-merged multi-row timeline. Tracking remains optional.
+- Lost-response retries reuse the caller-owned operation UUID only while the
+  payload is unchanged. Stale revisions reload server state while retaining the
+  draft. If the ROI revision changed in another tab, every load/mutation adopts
+  the matching latest ClipView and visible polygon, clears old action/coverage
+  frame marks and requires review against the new ROI before saving.
+- **Kiểm tra** now records explicit coverage for an exact interval and chosen
+  clear-action classes only after an operator attestation. Playback history and
+  event confirmation never create background. Unreviewed footage is displayed
+  as unknown; invalidated coverage remains visible as audit history.
+- The local pilot verifier validates exactly 20 preselected segments, counts
+  actual examples in both passes, rejects unknown as no-action, binds results
+  to a deterministic label-free shuffled schedule, requires the second pass to
+  start at least 24 hours after pass one completed, and computes inclusive IoU,
+  maximum one-to-one matches and crossing error with deterministic temporal
+  tie-breaking. It never uploads video or labels.
+- Real in-app browser on `127.0.0.1:18002` reopened the private shop clip and
+  displayed its saved ROI and confirmed `put_in` event after reload. Review mode
+  displayed zero pending events, explicit unknown coverage state and disabled
+  submit before selection/attestation. Delete → restore → confirm completed on
+  the real API and returned the event to its original confirmed state. No fake
+  coverage or additional action label was written to the private clip.
+- Full frontend regression before final commit: 14 files / 57 tests passed;
+  contract drift, TypeScript and production Vite build passed. Full backend
+  regression after the final verifier audit: 154 tests passed in 209.07
+  seconds. Python compile and `git diff --check` passed. The existing
+  Vite native config-loader warning and two installed test-client deprecation
+  warnings remain non-failing and unchanged.
+- Independent Astra/Pascal review found and drove fixes for cross-clip response
+  races, dirty-draft loss, operation replay, stale revision/ROI adoption,
+  coverage attestation reset and false pilot PASS cases. The final tie-break
+  audit found no remaining blocker after adversarial first-side, second-side
+  and permuted-input tie probes.
+
+**Pilot evidence verdict: PENDING_DATA.** The current private data contains one
+confirmed `put_in` event, not a preselected 20-segment pilot with two real
+examples per required class and two passes separated by 24 hours. This does not
+block the M2 software tool, but it blocks any claim that guideline consistency
+or action-model training data is ready.
+
 ## Clip-bound playback correction — 2026-09-11
 
 - Base HEAD: `c71ab55`. Frontend-only correction; no DB migration, encoder,

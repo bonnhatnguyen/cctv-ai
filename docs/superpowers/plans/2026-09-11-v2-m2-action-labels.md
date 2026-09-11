@@ -82,14 +82,14 @@
 - Consumes Task 2 `ActionWorkspaceView` API and the existing exact-frame `index`, `frameReady`, playback, ROI, and SAR geometry.
 - Produces a complete clip-local workflow: ROI confirmation then annotate then review.
 
-- [ ] Write RED tests for mode order `Vùng rổ → Gán nhãn → Kiểm tra`, direct entry to annotation when ROI exists, disabled frame capture until exact image load, keyboard focus isolation, and unsaved draft warnings.
-- [ ] Add a compact mode header. Keep clip list and storage secondary; hide ROI setup controls and tracking detail while annotating.
-- [ ] Implement interaction selection/creation with one anatomical hand value. Person-track reference stays optional and absent by default.
-- [ ] Implement frame capture buttons and shortcuts: I start, C crossing, O end, 1–5 labels, Ctrl+S save, Escape cancel. For `take_out`, `put_in`, and `unclear`, crossing remains null.
-- [ ] Add label-dependent hand/object/visibility/unclear controls and client validation mirroring the contract only for immediate feedback; server remains authoritative.
-- [ ] Render multi-row interval bars without merging overlaps. Selecting a bar seeks its start and loads it for edit; offer confirm, delete, and restore with visible saved/review state.
-- [ ] Keep a failed/stale save draft intact and retry the same operation UUID only for the unchanged payload.
-- [ ] Run focused UI tests, full frontend tests/build, and commit `feat(v2): add action labeling timeline`.
+- [x] Write RED tests for mode order `Vùng rổ → Gán nhãn → Kiểm tra`, direct entry to annotation when ROI exists, disabled frame capture until exact image load, keyboard focus isolation, and unsaved draft warnings.
+- [x] Add a compact mode header. Keep clip list and storage secondary; hide ROI setup controls and tracking detail while annotating.
+- [x] Implement interaction selection/creation with one anatomical hand value. Person-track reference stays optional and absent by default.
+- [x] Implement frame capture buttons and shortcuts: I start, C crossing, O end, 1–5 labels, Ctrl+S save, Escape cancel. For `take_out`, `put_in`, and `unclear`, crossing remains null.
+- [x] Add label-dependent hand/object/visibility/unclear controls and client validation mirroring the contract only for immediate feedback; server remains authoritative.
+- [x] Render multi-row interval bars without merging overlaps. Selecting a bar seeks its start and loads it for edit; offer confirm, delete, and restore with visible saved/review state.
+- [x] Keep a failed/stale save draft intact and retry the same operation UUID only for the unchanged payload.
+- [x] Run focused UI tests, full frontend tests/build, and commit `feat(v2): add action labeling timeline`.
 
 ### Task 4: Review coverage, real workflow, and M2 pilot gate
 
@@ -105,13 +105,13 @@
 - Consumes confirmed events and explicit coverage records.
 - Produces local pilot evidence; it does not export training data or claim model accuracy.
 
-- [ ] Write RED tests that review coverage is per label and frame interval, requires explicit operator confirmation, and is invalidated only over affected ranges/classes after event changes.
-- [ ] Implement ReviewPanel for confirming events and recording complete coverage per chosen labels. Display unreviewed intervals as unknown rather than background.
-- [ ] Implement a deterministic local pilot manifest and verifier for 20 preselected shop segments: at least two examples per clear action, two unclear, and two reviewed no-action segments. If footage lacks a class, record `PENDING_DATA` rather than relabeling another action.
+- [x] Write RED tests that review coverage is per label and frame interval, requires explicit operator confirmation, and is invalidated only over affected ranges/classes after event changes.
+- [x] Implement ReviewPanel for confirming events and recording complete coverage per chosen labels. Display unreviewed intervals as unknown rather than background.
+- [x] Implement a deterministic local pilot manifest and verifier for 20 preselected shop segments: at least two examples per clear action, two unclear, and two reviewed no-action segments. If footage lacks a class, record `PENDING_DATA` rather than relabeling another action.
 - [ ] Record first-pass annotations and support a blinded shuffled second pass after 24 hours. Compute label-set agreement, one-to-one maximum temporal-IoU matching, and crossing-frame error using the exact thresholds in the spec.
 - [ ] Verify the full real-browser flow: imported clip without tracking → existing ROI → create all available labels → reload/restart → edit/delete/restore → confirm/coverage → two-tab conflict. Check SAR 2:1 and ROI binding.
-- [ ] Run contract drift, compile, full backend tests, full frontend tests/build, and `git diff --check`; update the ledger with current counts and limitations.
-- [ ] Review the whole M2 diff for spec compliance and privacy, then commit `feat(v2): complete manual basket action labeling` only when mandatory software gates pass. Pilot data availability may remain explicitly pending and does not convert unknown footage into labels.
+- [x] Run contract drift, compile, full backend tests, full frontend tests/build, and `git diff --check`; update the ledger with current counts and limitations.
+- [x] Review the whole M2 diff for spec compliance and privacy, then commit `feat(v2): complete manual basket action labeling` only when mandatory software gates pass. Pilot data availability may remain explicitly pending and does not convert unknown footage into labels.
 
 ## Plan self-review
 

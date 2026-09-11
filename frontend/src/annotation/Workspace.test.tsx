@@ -133,3 +133,37 @@ it("does not switch clips when the current ROI draft is rejected by the user", a
   expect(confirm).toHaveBeenCalledWith(expect.stringMatching(/ROI chưa lưu/i));
   expect(screen.getByRole("heading", { name: "shop.mp4" })).toBeVisible();
 });
+
+it("shows the ordered workflow and opens an existing ROI directly in labeling", async () => {
+  const withRoi: ClipView = {
+    ...ready,
+    revision: 4,
+    roi: {
+      id: "66666666-6666-4666-8666-666666666666",
+      revision: 1,
+      camera_setup_id: "33333333-3333-4333-8333-333333333333",
+      polygon: [{ x: .1, y: .1 }, { x: .8, y: .1 }, { x: .8, y: .8 }],
+      template_revision_id: null,
+    },
+  };
+  vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+    if (url.endsWith("/actions")) return json({
+      clip_id: withRoi.id, clip_revision: withRoi.revision,
+      roi_revision_id: withRoi.roi!.id, interactions: [], annotations: [], review_coverage: [],
+    });
+    if (url === "/api/v2/annotations/storage") return json({ used_bytes: 1, limit_bytes: 100, free_bytes: 100 });
+    if (url.includes("/frames/")) return new Response(new Blob(["png"]), { headers: { "X-Frame-Index": "0", "X-Source-SHA256": withRoi.source_sha256! } });
+    if (url.startsWith("/api/v2/annotations/setups")) return json({ items: [], next_cursor: null });
+    if (url.startsWith("/api/v2/annotations/clips")) return json({ items: [withRoi], next_cursor: null });
+    throw new Error(`unexpected ${url}`);
+  }));
+  render(<Workspace onBack={() => undefined} />);
+  fireEvent.click(await screen.findByRole("button", { name: /Mở shop.mp4/i }));
+  const steps = screen.getByRole("navigation", { name: "Các bước annotation" });
+  expect(Array.from(steps.querySelectorAll("button"), (button) => button.textContent)).toEqual([
+    "1Vùng rổ", "2Gán nhãn", "3Kiểm tra",
+  ]);
+  expect(await screen.findByRole("heading", { name: "Nhãn mới" })).toBeVisible();
+  expect(screen.getByRole("button", { name: /Gán nhãn/ })).toHaveAttribute("aria-current", "step");
+  expect(screen.queryByRole("heading", { name: "Thiết lập ROI" })).not.toBeInTheDocument();
+});

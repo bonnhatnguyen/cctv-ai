@@ -8,7 +8,7 @@ function sar(value: string): [number, number] {
   return [left || 1, right || 1];
 }
 
-export function FrameViewer({ clip, index, onIndex, candidate, onFrameLoaded, onFrameError, playing, onPlaybackChange, points, onPoint, onMovePoint }: {
+export function FrameViewer({ clip, index, onIndex, candidate, onFrameLoaded, onFrameError, playing, onPlaybackChange, points, onPoint, onMovePoint, editable = true }: {
   clip: ClipView;
   index: number;
   onIndex: (index: number) => void;
@@ -20,6 +20,7 @@ export function FrameViewer({ clip, index, onIndex, candidate, onFrameLoaded, on
   points: Point[];
   onPoint: (point: Point) => void;
   onMovePoint?: (index: number, point: Point) => void;
+  editable?: boolean;
 }) {
   const video = useRef<HTMLVideoElement>(null);
   const plane = useRef<HTMLDivElement>(null);
@@ -62,7 +63,7 @@ export function FrameViewer({ clip, index, onIndex, candidate, onFrameLoaded, on
     return () => window.removeEventListener("keydown", key);
   });
   const click = (event: React.MouseEvent<HTMLDivElement>) => {
-    if (playing) return;
+    if (playing || !editable) return;
     if (dragged.current) {
       dragged.current = false;
       return;
@@ -111,8 +112,9 @@ export function FrameViewer({ clip, index, onIndex, candidate, onFrameLoaded, on
       />}
       <svg className="roi-overlay" viewBox="0 0 1 1" preserveAspectRatio="none" aria-label="ROI rổ tiền">
         {playing && clip.roi && <polygon points={clip.roi.polygon.map((p) => `${p.x},${p.y}`).join(" ")} fill="rgba(55,210,125,.16)" stroke="#56f09b" strokeWidth=".006" />}
-        {!playing && points.length > 1 && <polyline points={points.map((p) => `${p.x},${p.y}`).join(" ")} fill="rgba(55,210,125,.16)" stroke="#56f09b" strokeWidth=".006" />}
-        {!playing && points.map((point, position) => <circle key={position} data-testid="roi-point" className="roi-point" cx={point.x} cy={point.y} r=".012" fill="#fff" stroke="#1c9c5b" strokeWidth=".005"
+        {!playing && editable && points.length > 1 && <polyline points={points.map((p) => `${p.x},${p.y}`).join(" ")} fill="rgba(55,210,125,.16)" stroke="#56f09b" strokeWidth=".006" />}
+        {!playing && !editable && clip.roi && <polygon points={clip.roi.polygon.map((p) => `${p.x},${p.y}`).join(" ")} fill="rgba(55,210,125,.16)" stroke="#56f09b" strokeWidth=".006" />}
+        {!playing && editable && points.map((point, position) => <circle key={position} data-testid="roi-point" className="roi-point" cx={point.x} cy={point.y} r=".012" fill="#fff" stroke="#1c9c5b" strokeWidth=".005"
           onPointerDown={(event) => { event.stopPropagation(); dragging.current = position; dragged.current = false; }} />)}
       </svg>
       </div>

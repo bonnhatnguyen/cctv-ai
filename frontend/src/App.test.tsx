@@ -261,7 +261,7 @@ describe("luồng theo dõi người từ MP4", () => {
     expect(screen.getByText("V2 · chuẩn bị dữ liệu nhãn")).toBeVisible();
     expect(screen.queryByText("V2 · gán nhãn hành động")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Khoanh rổ tiền" }));
-    expect(await screen.findByRole("heading", { name: "Khoanh ROI rổ tiền" })).toBeVisible();
+    expect(await screen.findByRole("heading", { name: "Gán nhãn hành động quanh rổ" })).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "Khoanh rổ tiền" }));
     await waitFor(() => expect(fetch).toHaveBeenCalledWith(
       "/api/v2/annotations/clips", expect.objectContaining({ method: "POST" }),
