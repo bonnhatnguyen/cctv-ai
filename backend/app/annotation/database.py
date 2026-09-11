@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import BinaryIO
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 class SchemaVersionError(RuntimeError):
@@ -225,7 +225,101 @@ class AnnotationDatabase:
         )
         connection.execute(
             "INSERT INTO schema_migrations(version, applied_at) VALUES(?, ?)",
-            (SCHEMA_VERSION, now),
+            (1, now),
+        )
+
+    def _migrate_v2(self, connection: sqlite3.Connection) -> None:
+        schema = """
+            CREATE TABLE interactions(
+                id TEXT PRIMARY KEY,
+                clip_id TEXT NOT NULL,
+                revision INTEGER NOT NULL CHECK(revision >= 1),
+                hand TEXT NOT NULL CHECK(hand IN ('left','right','unknown')),
+                tracking_job_id TEXT,
+                local_track_id INTEGER CHECK(local_track_id >= 1),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                CHECK((tracking_job_id IS NULL) = (local_track_id IS NULL)),
+                FOREIGN KEY(clip_id) REFERENCES annotation_clips(id) ON DELETE CASCADE
+            );
+            CREATE TABLE action_annotations(
+                id TEXT PRIMARY KEY,
+                clip_id TEXT NOT NULL,
+                interaction_id TEXT,
+                roi_revision_id TEXT NOT NULL,
+                revision INTEGER NOT NULL CHECK(revision >= 1),
+                label TEXT NOT NULL CHECK(label IN ('hand_in','hand_out','take_out','put_in','unclear')),
+                start_frame INTEGER NOT NULL CHECK(start_frame >= 0),
+                end_frame INTEGER NOT NULL CHECK(end_frame >= start_frame),
+                crossing_frame INTEGER,
+                object_kind TEXT NOT NULL CHECK(object_kind IN ('cash','other','unknown')),
+                visibility TEXT NOT NULL CHECK(visibility IN ('clear','occluded')),
+                uncertain_labels_json TEXT NOT NULL,
+                unclear_reason TEXT,
+                review_state TEXT NOT NULL CHECK(review_state IN ('draft','confirmed','needs_review')),
+                guideline_version INTEGER NOT NULL CHECK(guideline_version = 1),
+                deleted INTEGER NOT NULL DEFAULT 0 CHECK(deleted IN (0,1)),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                CHECK(crossing_frame IS NULL OR crossing_frame BETWEEN start_frame AND end_frame),
+                CHECK((label IN ('hand_in','hand_out') AND crossing_frame IS NOT NULL) OR
+                      (label NOT IN ('hand_in','hand_out') AND crossing_frame IS NULL)),
+                CHECK(label = 'unclear' OR interaction_id IS NOT NULL),
+                FOREIGN KEY(clip_id) REFERENCES annotation_clips(id) ON DELETE CASCADE,
+                FOREIGN KEY(interaction_id) REFERENCES interactions(id),
+                FOREIGN KEY(roi_revision_id) REFERENCES roi_revisions(id)
+            );
+            CREATE TABLE action_revisions(
+                annotation_id TEXT NOT NULL,
+                revision INTEGER NOT NULL CHECK(revision >= 1),
+                snapshot_json TEXT NOT NULL,
+                action TEXT NOT NULL CHECK(action IN ('create','update','delete','restore','confirm','roi_invalidate','interaction_invalidate')),
+                created_at TEXT NOT NULL,
+                PRIMARY KEY(annotation_id, revision),
+                FOREIGN KEY(annotation_id) REFERENCES action_annotations(id) ON DELETE CASCADE
+            );
+            CREATE TABLE review_coverage(
+                id TEXT PRIMARY KEY,
+                clip_id TEXT NOT NULL,
+                roi_revision_id TEXT NOT NULL,
+                revision INTEGER NOT NULL CHECK(revision >= 1),
+                start_frame INTEGER NOT NULL CHECK(start_frame >= 0),
+                end_frame INTEGER NOT NULL CHECK(end_frame >= start_frame),
+                reviewed_labels_json TEXT NOT NULL,
+                guideline_version INTEGER NOT NULL CHECK(guideline_version = 1),
+                active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0,1)),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY(clip_id) REFERENCES annotation_clips(id) ON DELETE CASCADE,
+                FOREIGN KEY(roi_revision_id) REFERENCES roi_revisions(id)
+            );
+            CREATE TABLE coverage_revisions(
+                coverage_id TEXT NOT NULL,
+                revision INTEGER NOT NULL CHECK(revision >= 1),
+                snapshot_json TEXT NOT NULL,
+                action TEXT NOT NULL CHECK(action IN ('create','invalidate')),
+                created_at TEXT NOT NULL,
+                PRIMARY KEY(coverage_id, revision),
+                FOREIGN KEY(coverage_id) REFERENCES review_coverage(id) ON DELETE CASCADE
+            );
+            CREATE INDEX ix_interactions_clip ON interactions(clip_id, created_at, id);
+            CREATE INDEX ix_action_annotations_clip_interval
+                ON action_annotations(clip_id, deleted, start_frame, end_frame, id);
+            CREATE INDEX ix_action_annotations_interaction ON action_annotations(interaction_id);
+            CREATE INDEX ix_review_coverage_clip_interval
+                ON review_coverage(clip_id, active, start_frame, end_frame, id);
+        """
+        for statement in schema.split(";"):
+            if statement.strip():
+                connection.execute(statement)
+        if self._before_version_write is not None:
+            self._before_version_write()
+        from datetime import datetime, timezone
+
+        now = datetime.now(timezone.utc).isoformat()
+        connection.execute(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES(?, ?)",
+            (2, now),
         )
 
     def initialize(self) -> None:
@@ -248,6 +342,10 @@ class AnnotationDatabase:
                 try:
                     if version == 0:
                         self._migrate_v1(connection)
+                        version = 1
+                    if version == 1 and SCHEMA_VERSION >= 2:
+                        self._migrate_v2(connection)
+                        version = 2
                     connection.commit()
                 except BaseException:
                     connection.rollback()

@@ -38,13 +38,13 @@
 - Produces `InteractionView`, `ActionAnnotationView`, `ActionWorkspaceView`, write/review/tombstone requests, and repository methods consumed by Task 2.
 - Preserves all v1 rows and creates a SQLite backup before upgrading a non-empty v1 database.
 
-- [ ] Write RED contract tests for each label rule, interval/crossing validation, unclear fields, and forbidden extra fields.
-- [ ] Run focused tests and confirm failures are caused by absent M2 contracts.
-- [ ] Add migration v2 tables for interactions, action annotations, immutable action revisions, review coverage, and indexes/FKs; migrate with the existing rollback-safe transaction loop.
-- [ ] Add repository read workspace plus create/update/delete/restore/confirm event and create/update interaction methods. Each mutation replays before revision checks, advances clip revision atomically, records a revision, and validates clip/ROI/frame/interaction ownership.
-- [ ] In `save_roi`, mark live annotations `needs_review` and invalidate active review coverage in the same transaction when the ROI revision changes.
-- [ ] Test reopened DB preservation, rollback injection, FK enforcement, concurrent stale writers, lost-response replay, cross-clip interaction rejection, overlap preservation, tombstone restore, and ROI invalidation.
-- [ ] Run all annotation repository/database/contract tests and commit `feat(v2): add versioned action annotation domain`.
+- [x] Write RED contract tests for each label rule, interval/crossing validation, unclear fields, and forbidden extra fields.
+- [x] Run focused tests and confirm failures are caused by absent M2 contracts.
+- [x] Add migration v2 tables for interactions, action annotations, immutable action revisions, review coverage, and indexes/FKs; migrate with the existing rollback-safe transaction loop.
+- [x] Add repository read workspace plus create/update/delete/restore/confirm event and create/update interaction methods. Each mutation replays before revision checks, advances clip revision atomically, records a revision, and validates clip/ROI/frame/interaction ownership.
+- [x] In `save_roi`, mark live annotations `needs_review` and invalidate active review coverage in the same transaction when the ROI revision changes.
+- [x] Test reopened DB preservation, rollback injection, FK enforcement, concurrent stale writers, lost-response replay, cross-clip interaction rejection, overlap preservation, tombstone restore, and ROI invalidation.
+- [x] Run all annotation repository/database/contract tests and commit `feat(v2): add versioned action annotation domain`.
 
 ### Task 2: Action and review HTTP API plus generated contracts
 
