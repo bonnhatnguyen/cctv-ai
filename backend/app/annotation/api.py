@@ -13,6 +13,13 @@ from .contracts import (
     ActionAnnotationUpdate,
     ActionMutation,
     ActionWorkspaceView,
+    AssistanceModelInfo,
+    AssistanceRunCancel,
+    AssistanceRunCreate,
+    AssistanceRunListView,
+    AssistanceRunView,
+    AssistanceSuggestionListView,
+    AssistanceSuggestionView,
     CameraSetupCreate,
     CameraSetupListView,
     CameraSetupView,
@@ -26,8 +33,11 @@ from .contracts import (
     RetryPreparation,
     RoiWrite,
     StorageView,
+    SuggestionReject,
     TemplateWrite,
 )
+from .assistance_store import AssistanceQueueFull, AssistanceRepository, AssistanceStateConflict
+from .assistance_worker import AssistanceWorker
 from .database import SCHEMA_VERSION, root_fingerprint
 from .frames import (
     FrameIntegrityError,
@@ -73,6 +83,10 @@ def _raise_domain_error(exc: Exception) -> None:
         raise HTTPException(status.HTTP_504_GATEWAY_TIMEOUT, "frame_timeout") from exc
     if isinstance(exc, StorageFull):
         raise HTTPException(status.HTTP_507_INSUFFICIENT_STORAGE, "annotation_storage_full") from exc
+    if isinstance(exc, AssistanceQueueFull):
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "assistance_queue_full") from exc
+    if isinstance(exc, AssistanceStateConflict):
+        raise HTTPException(status.HTTP_409_CONFLICT, "assistance_conflict") from exc
     if isinstance(exc, FrameIntegrityError):
         raise HTTPException(status.HTTP_409_CONFLICT, "prepared_media_invalid") from exc
     if isinstance(exc, FileNotFoundError):
@@ -128,10 +142,16 @@ def create_router(
     repository: AnnotationRepository,
     frames: FrameService,
     worker: PreparationWorker,
+    assistance: AssistanceRepository,
+    assistance_worker: AssistanceWorker,
     *,
     instance_id: str | None,
 ) -> APIRouter:
     router = APIRouter(prefix="/api/v2/annotations", tags=["basket-annotations"])
+
+    @router.get("/assist-models", response_model=list[AssistanceModelInfo])
+    def assistance_models():
+        return assistance_worker.models()
 
     @router.post("/clips", response_model=ClipView, status_code=status.HTTP_201_CREATED)
     def register_clip(request: RegisterClip, response: Response) -> ClipView:
@@ -156,6 +176,70 @@ def create_router(
     def get_clip(clip_id: UUID):
         try:
             return repository.get_clip(clip_id)
+        except Exception as exc:
+            _raise_domain_error(exc)
+
+    @router.post(
+        "/clips/{clip_id}/assist-runs",
+        response_model=AssistanceRunView,
+        status_code=status.HTTP_202_ACCEPTED,
+    )
+    def create_assistance_run(clip_id: UUID, request: AssistanceRunCreate):
+        try:
+            models = {item.model: item for item in assistance_worker.models()}
+            if request.model not in models or not models[request.model].available:
+                raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "assistance_model_unavailable")
+            result = assistance.create_run(clip_id, request)
+            assistance_worker.wake()
+            return result
+        except HTTPException:
+            raise
+        except Exception as exc:
+            _raise_domain_error(exc)
+
+    @router.get("/clips/{clip_id}/assist-runs", response_model=AssistanceRunListView)
+    def list_assistance_runs(clip_id: UUID, active_only: bool = False):
+        try:
+            return assistance.list_runs(clip_id, active_only=active_only)
+        except Exception as exc:
+            _raise_domain_error(exc)
+
+    @router.get("/clips/{clip_id}/assist-runs/{run_id}", response_model=AssistanceRunView)
+    def get_assistance_run(clip_id: UUID, run_id: UUID):
+        try:
+            return assistance.get_clip_run(clip_id, run_id)
+        except Exception as exc:
+            _raise_domain_error(exc)
+
+    @router.post("/clips/{clip_id}/assist-runs/{run_id}/cancel", response_model=AssistanceRunView)
+    def cancel_assistance_run(clip_id: UUID, run_id: UUID, request: AssistanceRunCancel):
+        try:
+            assistance.get_clip_run(clip_id, run_id)
+            return assistance_worker.cancel(run_id, request)
+        except Exception as exc:
+            _raise_domain_error(exc)
+
+    @router.get(
+        "/clips/{clip_id}/assist-suggestions",
+        response_model=AssistanceSuggestionListView,
+    )
+    def list_assistance_suggestions(clip_id: UUID, state: str = "pending"):
+        try:
+            if state not in {"pending", "accepted", "rejected", "stale"}:
+                raise ValueError("invalid suggestion state")
+            return assistance.list_suggestions(clip_id, state=state)
+        except Exception as exc:
+            _raise_domain_error(exc)
+
+    @router.post(
+        "/clips/{clip_id}/assist-suggestions/{suggestion_id}/reject",
+        response_model=AssistanceSuggestionView,
+    )
+    def reject_assistance_suggestion(
+        clip_id: UUID, suggestion_id: UUID, request: SuggestionReject
+    ):
+        try:
+            return assistance.reject_suggestion(clip_id, suggestion_id, request)
         except Exception as exc:
             _raise_domain_error(exc)
 

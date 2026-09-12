@@ -9,17 +9,23 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from .contracts import (
+    AssistanceRunCancel,
     AssistanceRunCreate,
     AssistanceRunListView,
     AssistanceRunView,
     AssistanceSuggestionListView,
     AssistanceSuggestionView,
+    SuggestionReject,
 )
 from .database import AnnotationDatabase
 from .repository import ClipNotReady, NotFound, PayloadConflict, RevisionConflict, SourceUnavailable
 
 
 class AssistanceStateConflict(RuntimeError):
+    pass
+
+
+class AssistanceQueueFull(RuntimeError):
     pass
 
 
@@ -42,8 +48,9 @@ def _request_hash(request: AssistanceRunCreate) -> str:
 
 
 class AssistanceRepository:
-    def __init__(self, database: AnnotationDatabase) -> None:
+    def __init__(self, database: AnnotationDatabase, *, queue_limit: int = 4) -> None:
         self.database = database
+        self.queue_limit = queue_limit
 
     @staticmethod
     def _run_view(row: sqlite3.Row) -> AssistanceRunView:
@@ -109,6 +116,11 @@ class AssistanceRepository:
                 raise ClipNotReady("clip is not ready for assistance")
             if clip["source_state"] != "available" or not clip["source_sha256"]:
                 raise SourceUnavailable("clip source is unavailable")
+            queued = connection.execute(
+                "SELECT COUNT(*) AS count FROM assistance_runs WHERE status IN ('queued','running')"
+            ).fetchone()["count"]
+            if queued >= self.queue_limit:
+                raise AssistanceQueueFull("assistance queue is full")
             media = json.loads(clip["media_json"] or "null")
             if media is None or request.end_frame >= media["frame_count"]:
                 raise ValueError("assistance frame interval is outside the clip")
@@ -132,6 +144,12 @@ class AssistanceRepository:
     def get_run(self, run_id: UUID) -> AssistanceRunView:
         with self.database.read_connection() as connection:
             return self._run_view(self._require_run(connection, run_id))
+
+    def get_clip_run(self, clip_id: UUID, run_id: UUID) -> AssistanceRunView:
+        run = self.get_run(run_id)
+        if run.clip_id != clip_id:
+            raise NotFound("assistance run was not found for this clip")
+        return run
 
     def get_suggestion(self, suggestion_id: UUID) -> AssistanceSuggestionView:
         with self.database.read_connection() as connection:
@@ -230,6 +248,73 @@ class AssistanceRepository:
                 (error_code, _now(), str(run_id)),
             )
             return self._run_view(self._require_run(connection, run_id))
+
+    def request_cancel(
+        self, run_id: UUID, request: AssistanceRunCancel
+    ) -> AssistanceRunView:
+        payload_sha = hashlib.sha256(request.model_dump_json().encode()).hexdigest()
+        with self.database.write_transaction() as connection:
+            replay = connection.execute(
+                "SELECT action,payload_sha256,response_json FROM operations WHERE resource_id=? AND operation_id=?",
+                (str(run_id), str(request.operation_id)),
+            ).fetchone()
+            if replay is not None:
+                if replay["action"] != "cancel_assistance" or replay["payload_sha256"] != payload_sha:
+                    raise PayloadConflict("operation id was already used with a different payload")
+                return AssistanceRunView.model_validate_json(replay["response_json"])
+            run = self._require_run(connection, run_id)
+            if run["status"] not in {"queued", "running", "cancelled"}:
+                raise AssistanceStateConflict("completed run cannot be cancelled")
+            if run["status"] != "cancelled":
+                connection.execute(
+                    "UPDATE assistance_runs SET status='cancelled',error_code=NULL,updated_at=? WHERE id=?",
+                    (_now(), str(run_id)),
+                )
+            result = self._run_view(self._require_run(connection, run_id))
+            connection.execute(
+                "INSERT INTO operations(resource_id,operation_id,action,payload_sha256,response_json,created_at) VALUES(?,?,?,?,?,?)",
+                (str(run_id), str(request.operation_id), "cancel_assistance", payload_sha,
+                 result.model_dump_json(), _now()),
+            )
+            return result
+
+    def reject_suggestion(
+        self, clip_id: UUID, suggestion_id: UUID, request: SuggestionReject
+    ) -> AssistanceSuggestionView:
+        payload_sha = hashlib.sha256(request.model_dump_json().encode()).hexdigest()
+        with self.database.write_transaction() as connection:
+            replay = connection.execute(
+                "SELECT action,payload_sha256,response_json FROM operations WHERE resource_id=? AND operation_id=?",
+                (str(suggestion_id), str(request.operation_id)),
+            ).fetchone()
+            if replay is not None:
+                if replay["action"] != "reject_suggestion" or replay["payload_sha256"] != payload_sha:
+                    raise PayloadConflict("operation id was already used with a different payload")
+                return AssistanceSuggestionView.model_validate_json(replay["response_json"])
+            clip = self._require_clip(connection, clip_id)
+            if clip["revision"] != request.expected_clip_revision:
+                raise RevisionConflict("clip revision is stale")
+            row = connection.execute(
+                "SELECT * FROM assistance_suggestions WHERE id=? AND clip_id=?",
+                (str(suggestion_id), str(clip_id)),
+            ).fetchone()
+            if row is None:
+                raise NotFound("assistance suggestion was not found for this clip")
+            if row["review_state"] != "pending":
+                raise AssistanceStateConflict("assistance suggestion was already reviewed")
+            connection.execute(
+                "UPDATE assistance_suggestions SET review_state='rejected',updated_at=? WHERE id=?",
+                (_now(), str(suggestion_id)),
+            )
+            result = self._suggestion_view(connection.execute(
+                "SELECT * FROM assistance_suggestions WHERE id=?", (str(suggestion_id),)
+            ).fetchone())
+            connection.execute(
+                "INSERT INTO operations(resource_id,operation_id,action,payload_sha256,response_json,created_at) VALUES(?,?,?,?,?,?)",
+                (str(suggestion_id), str(request.operation_id), "reject_suggestion", payload_sha,
+                 result.model_dump_json(), _now()),
+            )
+            return result
 
     def reconcile_running(self) -> None:
         with self.database.write_transaction() as connection:

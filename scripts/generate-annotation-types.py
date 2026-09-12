@@ -19,6 +19,13 @@ from app.annotation.contracts import (  # noqa: E402
     ActionAnnotationView,
     ActionMutation,
     ActionWorkspaceView,
+    AssistanceModelInfo,
+    AssistanceRunCancel,
+    AssistanceRunCreate,
+    AssistanceRunListView,
+    AssistanceRunView,
+    AssistanceSuggestionListView,
+    AssistanceSuggestionView,
     CameraSetupCreate,
     CameraSetupListView,
     CameraSetupView,
@@ -38,6 +45,7 @@ from app.annotation.contracts import (  # noqa: E402
     RoiView,
     RoiWrite,
     StorageView,
+    SuggestionReject,
     TemplateWrite,
 )
 
@@ -69,6 +77,14 @@ MODELS = [
     ReviewCoverageWrite,
     ReviewCoverageView,
     ActionWorkspaceView,
+    AssistanceRunCreate,
+    AssistanceRunView,
+    AssistanceRunListView,
+    AssistanceSuggestionView,
+    AssistanceSuggestionListView,
+    AssistanceModelInfo,
+    AssistanceRunCancel,
+    SuggestionReject,
 ]
 SCHEMA_PATH = ROOT / "frontend" / "src" / "annotation" / "schema.generated.json"
 TYPES_PATH = ROOT / "frontend" / "src" / "annotation" / "types.generated.ts"

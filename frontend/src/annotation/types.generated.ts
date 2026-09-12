@@ -142,6 +142,7 @@ export interface ActionAnnotationCreate {
   unclear_reason?: "occlusion" | "boundary_ambiguous" | "clip_boundary" | "actor_ambiguous" | "object_ambiguous" | null;
   operation_id: string;
   expected_clip_revision: number;
+  suggestion_id?: string | null;
 }
 
 export interface ActionAnnotationUpdate {
@@ -211,4 +212,76 @@ export interface ActionWorkspaceView {
   interactions: Array<InteractionView>;
   annotations: Array<ActionAnnotationView>;
   review_coverage: Array<ReviewCoverageView>;
+}
+
+export interface AssistanceRunCreate {
+  operation_id: string;
+  expected_clip_revision: number;
+  model: "dino" | "mediapipe";
+  start_frame: number;
+  end_frame: number;
+}
+
+export interface AssistanceRunView {
+  id: string;
+  clip_id: string;
+  model: "dino" | "mediapipe";
+  status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
+  start_frame: number;
+  end_frame: number;
+  processed_frames: number;
+  scheduled_frames: number;
+  error_code: string | null;
+  source_sha256: string;
+  roi_revision_id: string;
+  guideline_version?: 1;
+  device: "cpu" | "cuda:0";
+  config_sha256: string | null;
+  asset_sha256: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AssistanceRunListView {
+  items: Array<AssistanceRunView>;
+  next_cursor: string | null;
+}
+
+export interface AssistanceSuggestionView {
+  id: string;
+  run_id: string;
+  clip_id: string;
+  proposal_key: string;
+  label: "hand_in" | "hand_out" | null;
+  action_start_frame?: number | null;
+  action_end_frame?: number | null;
+  view_start_frame: number;
+  view_end_frame: number;
+  crossing_estimate?: number | null;
+  crossing_bracket_start?: number | null;
+  crossing_bracket_end?: number | null;
+  reason: "crossing" | "boundary" | "track_gap" | "association" | "clip_boundary";
+  review_state: "pending" | "accepted" | "rejected" | "stale";
+  accepted_annotation_id: string | null;
+}
+
+export interface AssistanceSuggestionListView {
+  items: Array<AssistanceSuggestionView>;
+  next_cursor: string | null;
+}
+
+export interface AssistanceModelInfo {
+  model: "dino" | "mediapipe";
+  available: boolean;
+  device: "cpu" | "cuda:0";
+  error_code: string | null;
+}
+
+export interface AssistanceRunCancel {
+  operation_id: string;
+}
+
+export interface SuggestionReject {
+  operation_id: string;
+  expected_clip_revision: number;
 }

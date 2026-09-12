@@ -16,6 +16,8 @@ from fastapi.responses import FileResponse
 from app.annotation.api import create_router as create_annotation_router
 from app.annotation.database import AnnotationDatabase
 from app.annotation.frames import FrameService
+from app.annotation.assistance_store import AssistanceRepository
+from app.annotation.assistance_worker import AssistanceWorker
 from app.annotation.repository import AnnotationRepository
 from app.annotation.settings import AnnotationSettings, resolve_v1_data_dir
 from app.annotation.worker import PreparationWorker
@@ -92,6 +94,7 @@ def create_app(
     annotation_settings: AnnotationSettings | None = None,
     annotation_worker_factory: Callable[[AnnotationRepository, FrameService], object]
     | None = None,
+    assistance_worker_factory: Callable[..., object] | None = None,
 ) -> FastAPI:
     configured = settings or get_settings()
     configured.data_dir.mkdir(parents=True, exist_ok=True)
@@ -138,6 +141,18 @@ def create_app(
             deadline_seconds=configured_annotation.preparation_deadline_seconds,
         )
     )
+    assistance_store = AssistanceRepository(
+        annotation_database, queue_limit=configured_annotation.assistance_queue_limit
+    )
+    assistance_worker = (
+        assistance_worker_factory(
+            assistance_store, annotation_repository, annotation_frames, configured_annotation
+        )
+        if assistance_worker_factory
+        else AssistanceWorker(
+            assistance_store, annotation_repository, annotation_frames, configured_annotation
+        )
+    )
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
@@ -145,13 +160,20 @@ def create_app(
         reconcile_annotation = getattr(annotation_worker, "reconcile_startup", None)
         if callable(reconcile_annotation):
             reconcile_annotation()
+        reconcile_assistance = getattr(assistance_worker, "reconcile_startup", None)
+        if callable(reconcile_assistance):
+            reconcile_assistance()
         worker.start()
         annotation_worker.start()
+        assistance_worker.start()
         try:
             yield
         finally:
             errors: list[BaseException] = []
-            for stop in (annotation_worker.stop, worker.stop, annotation_database.close):
+            for stop in (
+                assistance_worker.stop, annotation_worker.stop, worker.stop,
+                annotation_database.close,
+            ):
                 try:
                     stop()
                 except BaseException as exc:
@@ -171,11 +193,15 @@ def create_app(
     application.state.annotation_repository = annotation_repository
     application.state.annotation_frames = annotation_frames
     application.state.annotation_worker = annotation_worker
+    application.state.assistance_store = assistance_store
+    application.state.assistance_worker = assistance_worker
     application.include_router(
         create_annotation_router(
             annotation_repository,
             annotation_frames,
             annotation_worker,
+            assistance_store,
+            assistance_worker,
             instance_id=configured.instance_id,
         )
     )

@@ -68,6 +68,19 @@
           "title": "Start Frame",
           "type": "integer"
         },
+        "suggestion_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Suggestion Id"
+        },
         "uncertain_labels": {
           "items": {
             "enum": [
@@ -505,6 +518,466 @@
         "conflicting_annotation_id"
       ],
       "title": "AnnotationConflictDetail",
+      "type": "object"
+    },
+    "AssistanceModelInfo": {
+      "additionalProperties": false,
+      "properties": {
+        "available": {
+          "title": "Available",
+          "type": "boolean"
+        },
+        "device": {
+          "enum": [
+            "cpu",
+            "cuda:0"
+          ],
+          "title": "Device",
+          "type": "string"
+        },
+        "error_code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Error Code"
+        },
+        "model": {
+          "enum": [
+            "dino",
+            "mediapipe"
+          ],
+          "title": "Model",
+          "type": "string"
+        }
+      },
+      "required": [
+        "model",
+        "available",
+        "device",
+        "error_code"
+      ],
+      "title": "AssistanceModelInfo",
+      "type": "object"
+    },
+    "AssistanceRunCancel": {
+      "additionalProperties": false,
+      "properties": {
+        "operation_id": {
+          "format": "uuid",
+          "title": "Operation Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id"
+      ],
+      "title": "AssistanceRunCancel",
+      "type": "object"
+    },
+    "AssistanceRunCreate": {
+      "additionalProperties": false,
+      "properties": {
+        "end_frame": {
+          "minimum": 0,
+          "title": "End Frame",
+          "type": "integer"
+        },
+        "expected_clip_revision": {
+          "minimum": 0,
+          "title": "Expected Clip Revision",
+          "type": "integer"
+        },
+        "model": {
+          "enum": [
+            "dino",
+            "mediapipe"
+          ],
+          "title": "Model",
+          "type": "string"
+        },
+        "operation_id": {
+          "format": "uuid",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "start_frame": {
+          "minimum": 0,
+          "title": "Start Frame",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "operation_id",
+        "expected_clip_revision",
+        "model",
+        "start_frame",
+        "end_frame"
+      ],
+      "title": "AssistanceRunCreate",
+      "type": "object"
+    },
+    "AssistanceRunListView": {
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/AssistanceRunView"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Next Cursor"
+        }
+      },
+      "required": [
+        "items",
+        "next_cursor"
+      ],
+      "title": "AssistanceRunListView",
+      "type": "object"
+    },
+    "AssistanceRunView": {
+      "additionalProperties": false,
+      "properties": {
+        "asset_sha256": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Asset Sha256"
+        },
+        "clip_id": {
+          "format": "uuid",
+          "title": "Clip Id",
+          "type": "string"
+        },
+        "config_sha256": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Config Sha256"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "device": {
+          "enum": [
+            "cpu",
+            "cuda:0"
+          ],
+          "title": "Device",
+          "type": "string"
+        },
+        "end_frame": {
+          "minimum": 0,
+          "title": "End Frame",
+          "type": "integer"
+        },
+        "error_code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Error Code"
+        },
+        "guideline_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Guideline Version",
+          "type": "integer"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "model": {
+          "enum": [
+            "dino",
+            "mediapipe"
+          ],
+          "title": "Model",
+          "type": "string"
+        },
+        "processed_frames": {
+          "minimum": 0,
+          "title": "Processed Frames",
+          "type": "integer"
+        },
+        "roi_revision_id": {
+          "format": "uuid",
+          "title": "Roi Revision Id",
+          "type": "string"
+        },
+        "scheduled_frames": {
+          "minimum": 0,
+          "title": "Scheduled Frames",
+          "type": "integer"
+        },
+        "source_sha256": {
+          "title": "Source Sha256",
+          "type": "string"
+        },
+        "start_frame": {
+          "minimum": 0,
+          "title": "Start Frame",
+          "type": "integer"
+        },
+        "status": {
+          "enum": [
+            "queued",
+            "running",
+            "succeeded",
+            "failed",
+            "cancelled"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "clip_id",
+        "model",
+        "status",
+        "start_frame",
+        "end_frame",
+        "processed_frames",
+        "scheduled_frames",
+        "error_code",
+        "source_sha256",
+        "roi_revision_id",
+        "device",
+        "config_sha256",
+        "asset_sha256",
+        "created_at",
+        "updated_at"
+      ],
+      "title": "AssistanceRunView",
+      "type": "object"
+    },
+    "AssistanceSuggestionListView": {
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/AssistanceSuggestionView"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Next Cursor"
+        }
+      },
+      "required": [
+        "items",
+        "next_cursor"
+      ],
+      "title": "AssistanceSuggestionListView",
+      "type": "object"
+    },
+    "AssistanceSuggestionView": {
+      "additionalProperties": false,
+      "properties": {
+        "accepted_annotation_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Accepted Annotation Id"
+        },
+        "action_end_frame": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Action End Frame"
+        },
+        "action_start_frame": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Action Start Frame"
+        },
+        "clip_id": {
+          "format": "uuid",
+          "title": "Clip Id",
+          "type": "string"
+        },
+        "crossing_bracket_end": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Crossing Bracket End"
+        },
+        "crossing_bracket_start": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Crossing Bracket Start"
+        },
+        "crossing_estimate": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Crossing Estimate"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "enum": [
+                "hand_in",
+                "hand_out"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Label"
+        },
+        "proposal_key": {
+          "title": "Proposal Key",
+          "type": "string"
+        },
+        "reason": {
+          "enum": [
+            "crossing",
+            "boundary",
+            "track_gap",
+            "association",
+            "clip_boundary"
+          ],
+          "title": "Reason",
+          "type": "string"
+        },
+        "review_state": {
+          "enum": [
+            "pending",
+            "accepted",
+            "rejected",
+            "stale"
+          ],
+          "title": "Review State",
+          "type": "string"
+        },
+        "run_id": {
+          "format": "uuid",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "view_end_frame": {
+          "minimum": 0,
+          "title": "View End Frame",
+          "type": "integer"
+        },
+        "view_start_frame": {
+          "minimum": 0,
+          "title": "View Start Frame",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "run_id",
+        "clip_id",
+        "proposal_key",
+        "label",
+        "view_start_frame",
+        "view_end_frame",
+        "reason",
+        "review_state",
+        "accepted_annotation_id"
+      ],
+      "title": "AssistanceSuggestionView",
       "type": "object"
     },
     "CameraSetupCreate": {
@@ -1331,6 +1804,27 @@
       "title": "StorageView",
       "type": "object"
     },
+    "SuggestionReject": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_clip_revision": {
+          "minimum": 0,
+          "title": "Expected Clip Revision",
+          "type": "integer"
+        },
+        "operation_id": {
+          "format": "uuid",
+          "title": "Operation Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id",
+        "expected_clip_revision"
+      ],
+      "title": "SuggestionReject",
+      "type": "object"
+    },
     "TemplateWrite": {
       "additionalProperties": false,
       "properties": {
@@ -1382,6 +1876,27 @@
     },
     "AnnotationConflictDetail": {
       "$ref": "#/$defs/AnnotationConflictDetail"
+    },
+    "AssistanceModelInfo": {
+      "$ref": "#/$defs/AssistanceModelInfo"
+    },
+    "AssistanceRunCancel": {
+      "$ref": "#/$defs/AssistanceRunCancel"
+    },
+    "AssistanceRunCreate": {
+      "$ref": "#/$defs/AssistanceRunCreate"
+    },
+    "AssistanceRunListView": {
+      "$ref": "#/$defs/AssistanceRunListView"
+    },
+    "AssistanceRunView": {
+      "$ref": "#/$defs/AssistanceRunView"
+    },
+    "AssistanceSuggestionListView": {
+      "$ref": "#/$defs/AssistanceSuggestionListView"
+    },
+    "AssistanceSuggestionView": {
+      "$ref": "#/$defs/AssistanceSuggestionView"
     },
     "CameraSetupCreate": {
       "$ref": "#/$defs/CameraSetupCreate"
@@ -1439,6 +1954,9 @@
     },
     "StorageView": {
       "$ref": "#/$defs/StorageView"
+    },
+    "SuggestionReject": {
+      "$ref": "#/$defs/SuggestionReject"
     },
     "TemplateWrite": {
       "$ref": "#/$defs/TemplateWrite"

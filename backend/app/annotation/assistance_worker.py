@@ -9,7 +9,8 @@ from pathlib import Path
 from typing import Callable
 
 from .assistance_protocol import AssistanceChildRequest, AssistanceChildResult
-from .assistance_store import AssistanceRepository
+from .assistance_store import AssistanceRepository, AssistanceStateConflict
+from .contracts import AssistanceModelInfo, AssistanceRunCancel
 from .repository import AnnotationRepository
 from .settings import AnnotationSettings
 from app.inference_lease import InferenceLease
@@ -54,6 +55,30 @@ class AssistanceWorker:
 
     def wake(self) -> None:
         self._wake.set()
+
+    def cancel(self, run_id, request: AssistanceRunCancel):
+        result = self.store.request_cancel(run_id, request)
+        self._wake.set()
+        return result
+
+    def models(self) -> list[AssistanceModelInfo]:
+        python_ready = bool(
+            self.settings.assistance_enabled
+            and self.settings.assistance_python
+            and self.settings.assistance_python.is_file()
+        )
+        result = []
+        for model, device in (("dino", self.settings.assistance_dino_device), ("mediapipe", "cpu")):
+            try:
+                asset_ready = (self._asset_directory(model) / "asset.json").is_file()
+            except FileNotFoundError:
+                asset_ready = False
+            available = python_ready and asset_ready
+            result.append(AssistanceModelInfo(
+                model=model, available=available, device=device,
+                error_code=None if available else ("python_missing" if not python_ready else "asset_missing"),
+            ))
+        return result
 
     def reconcile_startup(self) -> None:
         self.store.reconcile_running()
@@ -156,5 +181,8 @@ class AssistanceWorker:
                 [self._proposal_payload(item) for item in result.proposals],
             )
         except BaseException:
-            self.store.fail(run.id, "model_process_failed")
+            try:
+                self.store.fail(run.id, "model_process_failed")
+            except AssistanceStateConflict:
+                pass
         return True
