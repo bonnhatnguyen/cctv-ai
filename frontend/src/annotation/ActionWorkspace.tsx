@@ -290,7 +290,7 @@ export function ActionWorkspace({ clip, index, onIndex, frameReady, reviewOnly =
     </aside>}
     <div className="action-content">
       {reviewOnly && <div className="review-summary"><h3>Kiểm tra event</h3><p>{workspace.annotations.filter((item) => !item.deleted && item.review_state !== "confirmed").length} event đang chờ xác nhận. Chưa review không được xem là không có hành động.</p></div>}
-      {reviewOnly && <ReviewPanel coverage={workspace.review_coverage} currentFrame={index} frameReady={frameReady} busy={saving} error={error} resetExactFrames={coverageFrameReset} onRecord={recordCoverage} onDirtyChange={setCoverageDirty} />}
+      {reviewOnly && <ReviewPanel key={coverageFrameReset} coverage={workspace.review_coverage} currentFrame={index} frameReady={frameReady} busy={saving} error={error} resetExactFrames={coverageFrameReset} onRecord={recordCoverage} onDirtyChange={setCoverageDirty} />}
       {!reviewOnly && <ActionEditor draft={draft} onChange={changeDraft} currentFrame={index} frameReady={frameReady} saving={saving} editing={Boolean(editingId)} error={error} onSave={(nextDraft) => void save(nextDraft)} onCancel={cancel} />}
       <ActionTimeline annotations={workspace.annotations} frameCount={clip.media!.frame_count} busy={saving} onSelect={select} onConfirm={(item) => void mutate("confirm", item)} onDelete={(item) => void mutate("delete", item)} onRestore={(item) => void mutate("restore", item)} />
     </div>

@@ -272,3 +272,7 @@ remains non-failing. The first isolated test run exposed missing SQLAlchemy in
 the benchmark lock (model execution itself worked); SQLAlchemy 2.0.52 and its
 greenlet dependency were added with hashes, setup was rerun, and the exact
 isolated command then passed.
+The final repeated frontend suite exposed that ROI-conflict coverage frame marks
+were cleared in an effect one render after the warning. Keying the review panel
+to the reset revision now clears those marks in the same adopted-ROI render;
+the focused regression and the full 14-file / 57-test suite then passed.
