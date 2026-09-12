@@ -200,12 +200,16 @@ class ActionFields(Dto):
         return self
 
 
-class ActionAnnotationCreate(ActionFields):
+class ActionWrite(ActionFields):
     operation_id: UUID
     expected_clip_revision: StrictInt = Field(ge=0)
 
 
-class ActionAnnotationUpdate(ActionAnnotationCreate):
+class ActionAnnotationCreate(ActionWrite):
+    suggestion_id: UUID | None = None
+
+
+class ActionAnnotationUpdate(ActionWrite):
     expected_annotation_revision: StrictInt = Field(ge=1)
 
 

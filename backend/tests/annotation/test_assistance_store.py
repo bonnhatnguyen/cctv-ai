@@ -6,6 +6,7 @@ import pytest
 
 from app.annotation.assistance_store import AssistanceRepository, AssistanceStateConflict
 from app.annotation.contracts import AssistanceRunCreate, Point, RoiWrite
+from app.annotation.contracts import ActionAnnotationCreate, InteractionCreate
 from app.annotation.repository import PayloadConflict
 
 
@@ -133,3 +134,95 @@ def test_annotation_only_revision_change_does_not_make_run_stale(
     store.mark_running(run.id, scheduled_frames=3)
 
     assert store.publish(run.id, store.run_binding(run.id), []).status == "succeeded"
+
+
+def _pending_suggestion(store, clip):
+    run = store.create_run(clip.id, _request(clip.revision))
+    store.mark_running(run.id, scheduled_frames=3)
+    store.publish(
+        run.id,
+        store.run_binding(run.id),
+        [{
+            "proposal_key": "proposal-accept",
+            "label": "hand_in",
+            "action_start_frame": 0,
+            "action_end_frame": 2,
+            "view_start_frame": 0,
+            "view_end_frame": 2,
+            "crossing_estimate": 1,
+            "crossing_bracket_start": 0,
+            "crossing_bracket_end": 1,
+            "reason": "crossing",
+            "evidence": {},
+        }],
+    )
+    return store.list_suggestions(clip.id).items[0]
+
+
+def test_create_action_claims_suggestion_in_the_same_transaction(
+    store, repo, ready_clip_with_roi
+):
+    suggestion = _pending_suggestion(store, ready_clip_with_roi)
+    workspace = repo.create_interaction(
+        ready_clip_with_roi.id,
+        InteractionCreate(
+            operation_id=uuid4(),
+            expected_clip_revision=ready_clip_with_roi.revision,
+            hand="unknown",
+        ),
+    )
+    result = repo.create_action(
+        ready_clip_with_roi.id,
+        ActionAnnotationCreate(
+            operation_id=uuid4(),
+            expected_clip_revision=workspace.clip_revision,
+            suggestion_id=suggestion.id,
+            interaction_id=workspace.interactions[0].id,
+            label="hand_in",
+            start_frame=0,
+            end_frame=2,
+            crossing_frame=1,
+            object_kind="unknown",
+            visibility="clear",
+        ),
+    )
+
+    accepted = store.get_suggestion(suggestion.id)
+    assert accepted.review_state == "accepted"
+    assert accepted.accepted_annotation_id == result.annotations[0].id
+
+
+def test_failed_action_insert_leaves_suggestion_pending(
+    store, repo, ready_clip_with_roi
+):
+    suggestion = _pending_suggestion(store, ready_clip_with_roi)
+    with pytest.raises(Exception):
+        repo.create_action(
+            ready_clip_with_roi.id,
+            ActionAnnotationCreate(
+                operation_id=uuid4(),
+                expected_clip_revision=ready_clip_with_roi.revision,
+                suggestion_id=suggestion.id,
+                interaction_id=uuid4(),
+                label="hand_in",
+                start_frame=0,
+                end_frame=2,
+                crossing_frame=1,
+                object_kind="unknown",
+                visibility="clear",
+            ),
+        )
+    assert store.get_suggestion(suggestion.id).review_state == "pending"
+
+
+def test_update_contract_does_not_accept_suggestion_id():
+    from pydantic import ValidationError
+    from app.annotation.contracts import ActionAnnotationUpdate
+
+    with pytest.raises(ValidationError):
+        ActionAnnotationUpdate(
+            operation_id=uuid4(), expected_clip_revision=1,
+            expected_annotation_revision=1, suggestion_id=uuid4(),
+            interaction_id=uuid4(), label="hand_in", start_frame=0,
+            end_frame=2, crossing_frame=1, object_kind="unknown", visibility="clear",
+        )

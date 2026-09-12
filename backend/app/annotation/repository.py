@@ -1180,6 +1180,19 @@ class AnnotationRepository:
                     request.unclear_reason, now, now,
                 ),
             )
+            if request.suggestion_id is not None:
+                from .assistance_store import claim_suggestion_for_annotation
+
+                claim_suggestion_for_annotation(
+                    connection,
+                    suggestion_id=request.suggestion_id,
+                    clip_id=clip_id,
+                    annotation_id=annotation_id,
+                    source_sha256=clip["source_sha256"],
+                    roi_revision_id=UUID(clip["roi_revision_id"]),
+                    guideline_version=1,
+                    now=now,
+                )
             row = self._require_action(connection, annotation_id)
             self._store_action_revision(connection, row, "create", now)
             self._invalidate_coverage_range(

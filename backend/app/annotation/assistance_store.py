@@ -133,6 +133,16 @@ class AssistanceRepository:
         with self.database.read_connection() as connection:
             return self._run_view(self._require_run(connection, run_id))
 
+    def get_suggestion(self, suggestion_id: UUID) -> AssistanceSuggestionView:
+        with self.database.read_connection() as connection:
+            row = connection.execute(
+                "SELECT * FROM assistance_suggestions WHERE id=?",
+                (str(suggestion_id),),
+            ).fetchone()
+            if row is None:
+                raise NotFound("assistance suggestion was not found")
+            return self._suggestion_view(row)
+
     def run_binding(self, run_id: UUID) -> AssistanceRunBinding:
         run = self.get_run(run_id)
         return AssistanceRunBinding(run.source_sha256, run.roi_revision_id, run.guideline_version)
@@ -214,3 +224,44 @@ class AssistanceRepository:
             return AssistanceSuggestionListView(
                 items=[self._suggestion_view(row) for row in rows], next_cursor=None
             )
+
+
+def claim_suggestion_for_annotation(
+    connection: sqlite3.Connection,
+    *,
+    suggestion_id: UUID,
+    clip_id: UUID,
+    annotation_id: UUID,
+    source_sha256: str,
+    roi_revision_id: UUID,
+    guideline_version: int,
+    now: str,
+) -> None:
+    row = connection.execute(
+        """SELECT suggestion.*,run.status AS run_status,
+                  run.source_sha256 AS run_source_sha256,
+                  run.roi_revision_id AS run_roi_revision_id,
+                  run.guideline_version AS run_guideline_version
+           FROM assistance_suggestions AS suggestion
+           JOIN assistance_runs AS run ON run.id=suggestion.run_id
+           WHERE suggestion.id=?""",
+        (str(suggestion_id),),
+    ).fetchone()
+    if row is None or row["clip_id"] != str(clip_id):
+        raise NotFound("assistance suggestion was not found for this clip")
+    if row["review_state"] != "pending" or row["run_status"] != "succeeded":
+        raise AssistanceStateConflict("assistance suggestion is not pending")
+    if (
+        row["run_source_sha256"] != source_sha256
+        or row["run_roi_revision_id"] != str(roi_revision_id)
+        or row["run_guideline_version"] != guideline_version
+    ):
+        raise AssistanceStateConflict("assistance suggestion binding is stale")
+    changed = connection.execute(
+        """UPDATE assistance_suggestions
+           SET review_state='accepted',accepted_annotation_id=?,updated_at=?
+           WHERE id=? AND review_state='pending'""",
+        (str(annotation_id), now, str(suggestion_id)),
+    )
+    if changed.rowcount != 1:
+        raise AssistanceStateConflict("assistance suggestion was already reviewed")
