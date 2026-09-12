@@ -222,3 +222,27 @@ class Proposal(FrozenDto):
         ):
             raise ValueError("action_span must lie inside view_span")
         return self
+
+
+class EffortRecord(FrozenDto):
+    segment_id: UUID
+    operator: str = Field(min_length=1)
+    mode: Literal["manual", "assisted"]
+    model_run_id: UUID | None = None
+    order: StrictInt = Field(ge=1)
+    elapsed_seconds: float = Field(gt=0, allow_inf_nan=False)
+    outside_proposal_review_seconds: float = Field(ge=0, allow_inf_nan=False)
+    outside_review_completed: bool
+    completed: bool
+
+    @model_validator(mode="after")
+    def validate_effort_record(self) -> "EffortRecord":
+        if self.operator.strip() != self.operator:
+            raise ValueError("operator must not have surrounding whitespace")
+        if self.mode == "assisted" and self.model_run_id is None:
+            raise ValueError("assisted effort requires model_run_id")
+        if self.mode == "manual" and self.model_run_id is not None:
+            raise ValueError("manual effort must not have model_run_id")
+        if self.outside_proposal_review_seconds > self.elapsed_seconds:
+            raise ValueError("outside review time must be a subset of elapsed time")
+        return self
