@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import math
+import re
 from datetime import datetime
+from pathlib import Path
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, StrictInt, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator, model_validator
 
 
 class FrozenDto(BaseModel):
@@ -118,3 +121,67 @@ class RunConfig(FrozenDto):
     decoder_stall_seconds: StrictInt = Field(default=30, ge=1)
     output_quota_bytes: StrictInt = Field(default=512 * 1024**2, ge=1)
     free_disk_reserve_bytes: StrictInt = Field(default=2 * 1024**3, ge=0)
+
+
+class ModelAsset(FrozenDto):
+    model_id: Literal[
+        "mediapipe-hand-landmarker",
+        "IDEA-Research/grounding-dino-tiny",
+    ]
+    revision: str = Field(min_length=1)
+    files_sha256: dict[str, str] = Field(min_length=1)
+    license_source: str = Field(min_length=1)
+    license_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    telemetry_policy: Literal["allowed_by_user", "not_applicable"]
+
+    @field_validator("revision")
+    @classmethod
+    def reject_floating_revision(cls, value: str) -> str:
+        if value.strip() != value or value.lower() in {"main", "master", "latest"}:
+            raise ValueError("revision must be an exact, non-floating identifier")
+        return value
+
+    @field_validator("files_sha256")
+    @classmethod
+    def validate_model_files(cls, value: dict[str, str]) -> dict[str, str]:
+        for relative_name, expected_hash in value.items():
+            path = Path(relative_name)
+            if path.is_absolute() or ".." in path.parts or relative_name in {"", "."}:
+                raise ValueError("model file names must be safe relative paths")
+            if not re.fullmatch(r"[0-9a-f]{64}", expected_hash):
+                raise ValueError("model file hashes must be lowercase SHA-256 values")
+        return value
+
+    @model_validator(mode="after")
+    def validate_telemetry_policy(self) -> "ModelAsset":
+        if (
+            self.model_id == "mediapipe-hand-landmarker"
+            and self.telemetry_policy != "allowed_by_user"
+        ):
+            raise ValueError("MediaPipe requires telemetry_policy=allowed_by_user")
+        if (
+            self.model_id == "IDEA-Research/grounding-dino-tiny"
+            and self.telemetry_policy != "not_applicable"
+        ):
+            raise ValueError("Grounding DINO telemetry policy must be not_applicable")
+        return self
+
+
+class Observation(FrozenDto):
+    frame_index: StrictInt = Field(ge=0)
+    bbox: tuple[float, float, float, float]
+    score: float | None = Field(default=None, ge=0, le=1, allow_inf_nan=False)
+    score_kind: Literal["grounding_score", "handedness", "unavailable"]
+
+    @model_validator(mode="after")
+    def validate_observation(self) -> "Observation":
+        x1, y1, x2, y2 = self.bbox
+        if not all(math.isfinite(value) and 0 <= value <= 1 for value in self.bbox):
+            raise ValueError("bbox coordinates must be finite and normalized")
+        if x2 <= x1 or y2 <= y1:
+            raise ValueError("bbox must have positive width and height")
+        if self.score_kind == "unavailable" and self.score is not None:
+            raise ValueError("score must be null when score_kind is unavailable")
+        if self.score_kind != "unavailable" and self.score is None:
+            raise ValueError("score is required for the selected score kind")
+        return self

@@ -10,6 +10,11 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-11-v2-assisted-labeling-design.md`. Kế thừa ngữ nghĩa frame/ROI/nhãn từ `docs/superpowers/specs/2026-09-10-v2-basket-action-annotation-design.md`.
 
+**Execution status (2026-09-12):** Task 1 hoàn tất ở `80430c5`, Task 2 ở
+`b72828e`. Task 3 đã implement và kiểm bằng unit tests cùng smoke weights thật;
+commit Task 3 được tạo sau verification cuối. Các checkbox chi tiết bên dưới
+giữ nguyên làm checklist audit lịch sử, không đại diện trạng thái ledger.
+
 ## Global Constraints
 
 - Chỉ chặng A. Chặng B UI/API/persistence proposal cần kết quả A và người dùng duyệt model cùng mục tiêu chất lượng trước plan riêng.
@@ -19,7 +24,7 @@
 - Grounding DINO dùng prompt `hand.`; không dùng person box V1 làm tay. MediaPipe handedness score không phải detection/event confidence.
 - Không nối tay qua mất dấu/association mơ hồ để tạo crossing. ID chỉ local theo run/clip, không là người hoặc trái/phải giải phẫu.
 - Không migration, mutation API, tạo/sửa/xác nhận event/coverage, sửa legacy hand tracker, hoặc thay môi trường `.venv`/V1 đang chạy.
-- Không upload video/nhãn, telemetry, remote inference, push/publish; model download chỉ trong setup rõ ràng. Inference offline và fail nếu weights/dependency thiếu.
+- Không upload video/nhãn, remote inference, push/publish; model download chỉ trong setup rõ ràng. Theo duyệt ngày 2026-09-11, riêng MediaPipe SDK được phép gửi telemetry hiệu năng/mức sử dụng theo privacy notice chính thức và phải ghi `telemetry_policy=allowed_by_user` trong asset/run. Quyền này không áp dụng cho DINO hoặc dữ liệu dự án. Inference fail nếu weights/dependency thiếu.
 - Video nguồn, labels, manifest và báo cáo chi tiết private, Git-ignored; không thêm bản sao video/PNG/masks mặc định.
 - Config/run/model revision + weights hashes bất biến. Không dùng floating `main` cho lần đo; không silent fallback model/device.
 - Không chọn ngưỡng nghiệm thu chất lượng thay người dùng. Không đủ reference/coverage thì metric liên quan unavailable/PENDING_DATA, không 0 hoặc PASS giả.
@@ -247,6 +252,7 @@ class ModelAsset(BaseModel):
     files_sha256: dict[str, str]  # relative paths only
     license_source: str
     license_sha256: str
+    telemetry_policy: Literal['allowed_by_user', 'not_applicable']
 
 class Observation(BaseModel):
     frame_index: int

@@ -25,6 +25,9 @@ thay person tracker V1, sửa toàn bộ UI, hoặc chuyển dữ liệu sang CV
 ## 2. Phương án và quyết định
 
 - MediaPipe Hand Landmarker: baseline pretrained đầu tiên, dùng video mode.
+  Model card chính thức ghi surveillance, tay bị che/găng và nhận dạng danh
+  tính nằm ngoài phạm vi dự kiến; vì vậy đây chỉ là baseline tìm candidate,
+  bắt buộc đo trên camera shop và không được dùng trực tiếp làm nhãn thật.
 - Grounding DINO Tiny: đối chứng phát hiện tay bằng prompt cố định `hand.`.
   Dùng cùng các đoạn đánh giá; không giả định zero-shot có nghĩa chính xác
   trên tay nhỏ/bị che của CCTV.
@@ -37,6 +40,12 @@ Môi trường benchmark riêng phải ghi phiên bản Python, package, thiết
 model revision và hash weights; không dùng revision `main` cho lần chạy đo.
 Tải weights từ nguồn chính thức là bước setup rõ ràng, không tải ngầm khi API
 khởi động. Inference local, không upload footage/nhãn, không remote inference.
+Ngày 2026-09-11 người dùng cho phép thử MediaPipe với quyền đầy đủ. Ngoại lệ
+được giới hạn cho benchmark MediaPipe: SDK có thể gửi telemetry hiệu năng và
+mức sử dụng như privacy notice chính thức mô tả; ảnh/video đầu vào vẫn xử lý
+trên thiết bị. Mỗi asset/run MediaPipe phải ghi
+`telemetry_policy=allowed_by_user`. Grounding DINO và phần còn lại không được
+kế thừa quyền này; vẫn offline sau bước setup tải model rõ ràng.
 
 ## 3. Chặng A — benchmark độc lập, không ghi nhãn
 

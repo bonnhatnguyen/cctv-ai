@@ -9,23 +9,16 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from app.annotation.contracts import (
-    ActionAnnotationCreate,
-    ActionMutation,
-    CameraSetupCreate,
-    InteractionCreate,
-    MediaView,
-    Point,
-    RegisterClip,
-    ReviewCoverageWrite,
-    RoiWrite,
-)
-from app.annotation.database import AnnotationDatabase
-from app.annotation.repository import AnnotationRepository
 from app.annotation_benchmark.contracts import FrameSpan, SelectionItem
-from app.v1.contracts import VideoMetadata
-from app.v1.database import create_database
-from app.v1.jobs import JobRepository
+
+
+def pytest_addoption(parser: pytest.Parser) -> None:
+    parser.addoption(
+        "--model-root",
+        action="store",
+        default=None,
+        help="Private directory containing asset.json and verified model files",
+    )
 
 
 @dataclass
@@ -69,6 +62,23 @@ class PrivateFixture:
 
 @pytest.fixture
 def private_fixture(tmp_path: Path) -> PrivateFixture:
+    from app.annotation.contracts import (
+        ActionAnnotationCreate,
+        ActionMutation,
+        CameraSetupCreate,
+        InteractionCreate,
+        MediaView,
+        Point,
+        RegisterClip,
+        ReviewCoverageWrite,
+        RoiWrite,
+    )
+    from app.annotation.database import AnnotationDatabase
+    from app.annotation.repository import AnnotationRepository
+    from app.v1.contracts import VideoMetadata
+    from app.v1.database import create_database
+    from app.v1.jobs import JobRepository
+
     source_root = (tmp_path / "source-data").resolve()
     annotation_root = (source_root / "annotations").resolve()
     source_root.mkdir()
