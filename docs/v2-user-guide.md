@@ -119,3 +119,15 @@ dấu lỗi rõ ràng và cần retry; ứng dụng không dùng output dở dan
 
 **Số ID theo dõi cục bộ trong clip** là số ByteTrack ID phân biệt trong một
 lần chạy clip. Đây không phải số người duy nhất và không phải danh tính.
+
+## Gợi ý nhãn bằng model (CLI thử nghiệm)
+
+Chặng A hiện có benchmark CLI riêng tư cho MediaPipe và Grounding DINO. Công cụ
+chỉ tạo danh sách vùng thời gian cần xem cho `hand_in`/`hand_out`; chưa có nút
+model trong UI và model không tự ghi nhãn, xác nhận hoặc coverage. Quy trình,
+đường dẫn output và cách phục hồi lỗi nằm trong
+`docs/v2-assisted-benchmark-runbook.md`.
+
+Nếu dữ liệu chưa có reference `hand_in`/`hand_out` và coverage đầy đủ, report
+phải hiện `PENDING_DATA`. Kết quả đó chỉ là technical smoke, không phải bằng
+chứng model đã đạt chất lượng hoặc đã giảm công gán nhãn.

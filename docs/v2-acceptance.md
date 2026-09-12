@@ -229,3 +229,46 @@ or action-model training data is ready.
   original excerpt result, with zero ROI overlays from the other clip.
 - Scope: ROI is a browser overlay, not burned into downloaded MP4 or native
   video-only fullscreen. This correction does not implement M2 action labels.
+
+## Assisted-label benchmark / software gate — 2026-09-12
+
+- Chặng A is isolated from V1/V2 runtime and annotation writes. The CLI freezes
+  a read-only clip/source/ROI/reference snapshot with SHA-256, rejects remote
+  inputs, verifies pinned model assets and writes only beneath the bound private
+  `annotations/benchmarks` root.
+- A run uses one model in an owned child process, a per-root Windows lock,
+  offline model settings, deadline/process-tree cleanup, disk quota/reserve,
+  exact scheduled-frame JSONL (including empty detections), stale-state checks
+  before and after inference, and atomic no-overwrite publication. Failed runs
+  remain explicitly failed and never become zero-event successes.
+- The current private database has four clips, three saved ROIs, zero review
+  coverage rows and no active action annotations. Its only historical action is
+  a deleted draft `put_in`; it is not reinterpreted as `hand_in` or `hand_out`.
+
+**SOFTWARE:** focused benchmark verification passed: 74 tests, 3 optional model
+tests skipped; final whole-project regression is recorded below.
+**MODEL_SMOKE / MediaPipe:** PASS as a technical execution gate. Private run
+`ad3535b3-4b54-44bc-b839-001caa1aa304` processed all 151 scheduled frames from
+the frozen 30-second shop selection (stride 5), detected one hand on one frame
+and emitted one review-only `track_gap` proposal. Process model load was 0.485 s,
+inference 1.719 s and end-to-end 4.984 s. This sparse result is not a quality
+PASS.
+**MODEL_SMOKE / Grounding DINO:** PASS as a technical execution gate. Private
+run `ac8eca20-64cb-4324-a1cc-8d8b3328ce25` used the same frozen selection,
+processed all 151 frames, produced 131 detections on 96 frames and emitted 33
+review-only proposals (21 `association`, 12 `track_gap`). Process model load
+was 6.501 s, synchronized CUDA inference 85.128 s and end-to-end 95.828 s. The
+larger noisy review queue is not a quality PASS.
+**QUALITY:** `PENDING_DATA` — no confirmed `hand_in`/`hand_out` references or
+class-specific reviewed coverage exist.
+**EFFORT:** `PENDING_DATA` — no paired manual/assisted timed review exists.
+
+Final regression: the isolated benchmark environment passed 74 tests with 3
+explicit optional model-smoke skips, and Python compile passed. The unchanged
+application runtime suite passed 154 tests with its two existing dependency
+deprecation warnings. Frontend passed 14 files / 57 tests, annotation contract
+check, TypeScript and production build; the existing Vite native-config warning
+remains non-failing. The first isolated test run exposed missing SQLAlchemy in
+the benchmark lock (model execution itself worked); SQLAlchemy 2.0.52 and its
+greenlet dependency were added with hashes, setup was rerun, and the exact
+isolated command then passed.
