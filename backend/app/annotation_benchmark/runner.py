@@ -15,6 +15,8 @@ from pathlib import Path
 from typing import IO, Iterator, Literal
 from uuid import UUID, uuid4
 
+from app.inference_lease import InferenceLease
+
 from .contracts import FrozenManifest, ModelAsset, Proposal, RunConfig
 from .media import SourceDecodeError, SourceMediaChanged, iter_source_frames
 from .models import load_detector
@@ -617,7 +619,7 @@ def run_benchmark(
     runs_root = _ensure_owned_directory(annotation_root, benchmark_root / "runs")
     failed_root = _ensure_owned_directory(annotation_root, benchmark_root / "failed")
 
-    with _exclusive_lock(benchmark_root / ".run.lock"):
+    with _exclusive_lock(benchmark_root / ".run.lock"), InferenceLease().acquire():
         _check_capacity(benchmark_root, config)
         _require_v1_idle(source_root)
         _validate_frozen(manifest, source_root, annotation_root)

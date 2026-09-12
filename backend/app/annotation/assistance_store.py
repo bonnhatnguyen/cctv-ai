@@ -157,6 +157,13 @@ class AssistanceRepository:
             ).fetchall()
             return AssistanceRunListView(items=[self._run_view(row) for row in rows], next_cursor=None)
 
+    def next_queued_run(self) -> AssistanceRunView | None:
+        with self.database.read_connection() as connection:
+            row = connection.execute(
+                "SELECT * FROM assistance_runs WHERE status='queued' ORDER BY created_at,id LIMIT 1"
+            ).fetchone()
+            return self._run_view(row) if row is not None else None
+
     def mark_running(self, run_id: UUID, *, scheduled_frames: int) -> AssistanceRunView:
         with self.database.write_transaction() as connection:
             run = self._require_run(connection, run_id)
@@ -212,6 +219,25 @@ class AssistanceRepository:
                 (now, str(run_id)),
             )
             return self._run_view(self._require_run(connection, run_id))
+
+    def fail(self, run_id: UUID, error_code: str) -> AssistanceRunView:
+        with self.database.write_transaction() as connection:
+            run = self._require_run(connection, run_id)
+            if run["status"] in {"succeeded", "cancelled"}:
+                raise AssistanceStateConflict("completed run cannot fail")
+            connection.execute(
+                "UPDATE assistance_runs SET status='failed',error_code=?,updated_at=? WHERE id=?",
+                (error_code, _now(), str(run_id)),
+            )
+            return self._run_view(self._require_run(connection, run_id))
+
+    def reconcile_running(self) -> None:
+        with self.database.write_transaction() as connection:
+            connection.execute(
+                """UPDATE assistance_runs SET status='failed',error_code='interrupted',updated_at=?
+                   WHERE status='running'""",
+                (_now(),),
+            )
 
     def list_suggestions(self, clip_id: UUID, *, state: str = "pending") -> AssistanceSuggestionListView:
         with self.database.read_connection() as connection:

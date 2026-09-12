@@ -95,6 +95,36 @@ def test_worker_processes_jobs_serially_and_publishes_only_completed_output(
     assert not (tmp_path / "job-1" / "annotated.tmp.mp4").exists()
 
 
+def test_tracking_worker_waits_for_shared_inference_lease(
+    repository, encoded_three_frame_video, tmp_path
+):
+    from app.inference_lease import InferenceLease
+
+    source = tmp_path / "job-1" / "source.mp4"
+    source.parent.mkdir()
+    shutil.copyfile(encoded_three_frame_video, source)
+    _import_job(repository, source)
+    lease = InferenceLease(tmp_path / "shared-inference.lock")
+    entered = threading.Event()
+
+    def controlled_process(source, output, options, on_progress, **_kwargs):
+        entered.set()
+        shutil.copyfile(source, output)
+        return _summary()
+
+    worker = TrackingWorker(
+        repository, tmp_path, "model.pt", "cpu", 960,
+        process=controlled_process, inference_lease=lease,
+    )
+    worker.start()
+    with lease.acquire():
+        worker.submit("job-1")
+        assert not entered.wait(timeout=.2)
+    assert entered.wait(timeout=2)
+    assert worker.wait_until_idle(timeout=5)
+    worker.stop()
+
+
 def test_worker_failure_is_safe_and_preserves_imported_source(repository, encoded_three_frame_video, tmp_path):
     source = tmp_path / "job-1" / "source.mp4"
     source.parent.mkdir()

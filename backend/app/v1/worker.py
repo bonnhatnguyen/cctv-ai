@@ -13,6 +13,7 @@ from typing import Callable
 from .contracts import Progress, RunOptions, Stage
 from .jobs import JobRepository, JobView, PrivateJob
 from .pipeline import process_video
+from app.inference_lease import InferenceLease
 
 
 logger = logging.getLogger(__name__)
@@ -37,12 +38,14 @@ class TrackingWorker:
         *,
         process: Callable = process_video,
         progress_interval_seconds: float = 0.25,
+        inference_lease: InferenceLease | None = None,
     ):
         self._repository = repository
         self._data_root = Path(data_root)
         self._options = RunOptions(str(model_path), device, image_size)
         self._process = process
         self._progress_interval = progress_interval_seconds
+        self._inference_lease = inference_lease or InferenceLease()
         self._queue: queue.Queue[str | None] = queue.Queue()
         self._scheduled: set[str] = set()
         self._lock = threading.Lock()
@@ -155,13 +158,14 @@ class TrackingWorker:
 
         published = False
         try:
-            summary = self._process(
-                source,
-                temporary_output,
-                self._options,
-                save_progress,
-                evidence_path=temporary_evidence,
-            )
+            with self._inference_lease.acquire(self._stop.is_set):
+                summary = self._process(
+                    source,
+                    temporary_output,
+                    self._options,
+                    save_progress,
+                    evidence_path=temporary_evidence,
+                )
             if not temporary_output.is_file():
                 raise RuntimeError("processing did not produce an output")
             os.replace(temporary_output, final_output)
