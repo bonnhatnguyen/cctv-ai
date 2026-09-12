@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import BinaryIO
 
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 class SchemaVersionError(RuntimeError):
@@ -322,6 +322,75 @@ class AnnotationDatabase:
             (2, now),
         )
 
+    def _migrate_v3(self, connection: sqlite3.Connection) -> None:
+        schema = """
+            CREATE TABLE assistance_runs(
+                id TEXT PRIMARY KEY,
+                clip_id TEXT NOT NULL,
+                operation_id TEXT NOT NULL,
+                request_sha256 TEXT NOT NULL,
+                source_sha256 TEXT NOT NULL,
+                roi_revision_id TEXT NOT NULL,
+                guideline_version INTEGER NOT NULL CHECK(guideline_version = 1),
+                model TEXT NOT NULL CHECK(model IN ('dino','mediapipe')),
+                device TEXT NOT NULL CHECK(device IN ('cpu','cuda:0')),
+                config_sha256 TEXT,
+                asset_sha256 TEXT,
+                start_frame INTEGER NOT NULL CHECK(start_frame >= 0),
+                end_frame INTEGER NOT NULL CHECK(end_frame >= start_frame),
+                status TEXT NOT NULL CHECK(status IN ('queued','running','succeeded','failed','cancelled')),
+                processed_frames INTEGER NOT NULL DEFAULT 0 CHECK(processed_frames >= 0),
+                scheduled_frames INTEGER NOT NULL DEFAULT 0 CHECK(scheduled_frames >= 0),
+                error_code TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(clip_id, operation_id),
+                FOREIGN KEY(clip_id) REFERENCES annotation_clips(id) ON DELETE CASCADE,
+                FOREIGN KEY(roi_revision_id) REFERENCES roi_revisions(id)
+            );
+            CREATE TABLE assistance_suggestions(
+                id TEXT PRIMARY KEY,
+                run_id TEXT NOT NULL,
+                clip_id TEXT NOT NULL,
+                proposal_key TEXT NOT NULL,
+                label TEXT CHECK(label IS NULL OR label IN ('hand_in','hand_out')),
+                action_start_frame INTEGER CHECK(action_start_frame IS NULL OR action_start_frame >= 0),
+                action_end_frame INTEGER CHECK(action_end_frame IS NULL OR action_end_frame >= action_start_frame),
+                view_start_frame INTEGER NOT NULL CHECK(view_start_frame >= 0),
+                view_end_frame INTEGER NOT NULL CHECK(view_end_frame >= view_start_frame),
+                crossing_estimate INTEGER CHECK(crossing_estimate IS NULL OR crossing_estimate >= 0),
+                crossing_bracket_start INTEGER CHECK(crossing_bracket_start IS NULL OR crossing_bracket_start >= 0),
+                crossing_bracket_end INTEGER CHECK(crossing_bracket_end IS NULL OR crossing_bracket_end >= crossing_bracket_start),
+                reason TEXT NOT NULL CHECK(reason IN ('crossing','boundary','track_gap','association','clip_boundary')),
+                evidence_json TEXT NOT NULL,
+                review_state TEXT NOT NULL CHECK(review_state IN ('pending','accepted','rejected','stale')),
+                accepted_annotation_id TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(run_id, proposal_key),
+                FOREIGN KEY(run_id) REFERENCES assistance_runs(id) ON DELETE CASCADE,
+                FOREIGN KEY(clip_id) REFERENCES annotation_clips(id) ON DELETE CASCADE,
+                FOREIGN KEY(accepted_annotation_id) REFERENCES action_annotations(id)
+            );
+            CREATE INDEX ix_assistance_runs_clip_created
+                ON assistance_runs(clip_id, created_at, id);
+            CREATE INDEX ix_assistance_runs_queue
+                ON assistance_runs(status, created_at, id);
+            CREATE INDEX ix_assistance_suggestions_clip_queue
+                ON assistance_suggestions(clip_id, review_state, view_start_frame, id);
+        """
+        for statement in schema.split(";"):
+            if statement.strip():
+                connection.execute(statement)
+        if self._before_version_write is not None:
+            self._before_version_write()
+        from datetime import datetime, timezone
+
+        connection.execute(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES(?, ?)",
+            (3, datetime.now(timezone.utc).isoformat()),
+        )
+
     def initialize(self) -> None:
         if self._initialized:
             return
@@ -346,6 +415,9 @@ class AnnotationDatabase:
                     if version == 1 and SCHEMA_VERSION >= 2:
                         self._migrate_v2(connection)
                         version = 2
+                    if version == 2 and SCHEMA_VERSION >= 3:
+                        self._migrate_v3(connection)
+                        version = 3
                     connection.commit()
                 except BaseException:
                     connection.rollback()

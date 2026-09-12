@@ -334,7 +334,7 @@ def read_snapshot(
     annotations = _open_read_only(annotation_root / "annotations.db")
     jobs: sqlite3.Connection | None = None
     try:
-        if _schema_version(annotations) != 2:
+        if _schema_version(annotations) not in {2, 3}:
             raise SnapshotError("unsupported annotation database schema version")
         binding = annotations.execute(
             "SELECT source_data_root FROM annotation_binding WHERE singleton=1"
