@@ -1,8 +1,8 @@
 # V2 — tích hợp model hỗ trợ review nhãn quanh ROI
 
-Ngày: 2026-09-12. Trạng thái: thiết kế nối tiếp chặng benchmark đã được người
-dùng duyệt ở mức luồng; chờ người dùng review tài liệu trước khi viết plan và
-implementation.
+Ngày: 2026-09-12. Trạng thái: người dùng đã duyệt đặc tả; cập nhật làm rõ theo
+8 findings audit plan đã được người dùng yêu cầu sửa. Implementation chưa bắt đầu.
+Plan: `../plans/2026-09-12-v2-assisted-review-integration.md`.
 
 ## 1. Mục tiêu và sự thật chất lượng
 
@@ -43,15 +43,22 @@ API không import Torch, Transformers hoặc MediaPipe. Một `AssistanceWorker`
 duy nhất lấy job từ DB, ghi request JSON bất biến dưới private annotation root,
 rồi khởi chạy worker subprocess bằng Python của `.venv-assist-benchmark`.
 Subprocess dùng detector adapter, media sampling và proposal builder hiện có,
-ghi result vào staging; parent kiểm schema, hash nguồn, ROI revision và clip
-revision lần nữa trước khi publish DB. Thiếu interpreter/weights, decoder lỗi,
+ghi result vào staging; parent kiểm schema, hash nguồn, ROI revision và guideline
+lần nữa trước khi publish DB. Clip revision thay đổi do lưu annotation không
+làm stale inference; expected clip revision vẫn kiểm lúc user mutation.
+Thiếu interpreter/weights, decoder lỗi,
 OOM, timeout hoặc child crash đều thành trạng thái lỗi có mã rõ ràng; không
 được trả một danh sách rỗng như kết quả thành công.
 
-Chỉ một assistance job chạy cùng lúc. Worker không chạy nếu V1 person tracking
-đang bận. Shutdown yêu cầu cancel process tree thuộc sở hữu; startup đổi job
+Chỉ một assistance job chạy cùng lúc. V1, assistance và benchmark CLI cùng giữ
+lease process-safe trong toàn vòng đời inference; job đợi lease ở trạng thái
+queued. Lease dùng chung trên máy cho mọi source root/worktree; kiểm busy một
+lần không thay được lease. Shutdown yêu cầu cancel process tree thuộc sở hữu; startup đổi job
 `running` còn sót thành `failed/interrupted`. Không tự tải model khi API start
 hoặc khi người dùng bấm chạy.
+
+Interpreter/model root được phép chưa cấu hình; availability báo nguyên nhân
+và manual mode vẫn boot. Device và sampling config được chốt/hash lúc enqueue.
 
 ### 2.2 Lưu trữ và audit
 
@@ -82,6 +89,8 @@ Các route mới dưới `/api/v2/annotations`:
 - `POST /clips/{clip_id}/assist-runs`: tạo job idempotent với model,
   `start_frame`, `end_frame`, `operation_id`, `expected_clip_revision`;
 - `GET /clips/{clip_id}/assist-runs/{run_id}`: trạng thái/progress/error;
+- `GET /clips/{clip_id}/assist-runs`: phân trang history hoặc `active_only=true`
+  để khôi phục queued/running jobs sau reload mà không cần biết run ID trước;
 - `POST /clips/{clip_id}/assist-runs/{run_id}/cancel`: cancel job của clip;
 - `GET /clips/{clip_id}/assist-suggestions`: queue, mặc định lấy pending của
   các run hiện hành và trả cả provenance cần hiển thị;
@@ -90,8 +99,10 @@ Các route mới dưới `/api/v2/annotations`:
 
 `ActionAnnotationCreate` có thêm `suggestion_id` nullable. Khi có giá trị,
 repository kiểm suggestion thuộc clip, run đã succeeded, binding còn hiện hành
-và state pending. Trong cùng transaction đang tạo annotation, suggestion được
-đổi thành accepted và gắn annotation ID. Validation/revision/overlap hiện có
+và state pending. INSERT annotation trước, sau đó claim suggestion thành accepted
+và gắn annotation ID trong cùng transaction; claim lỗi rollback toàn bộ. Tách
+base request chung để Update không kế thừa suggestion_id của Create.
+Validation/revision/overlap hiện có
 vẫn là nguồn sự thật; retry cùng operation ID không tạo nhãn trùng. Nếu người
 dùng sửa proposal trước khi lưu, annotation lưu giá trị người dùng đã chọn,
 không sửa dữ liệu proposal lịch sử.
@@ -114,6 +125,8 @@ Trong bước **Gán nhãn**, thêm panel **Model hỗ trợ** trước editor n
 6. **Dùng làm nháp** điền suggestion ID, label nếu có và các mốc ước lượng vào
    editor với banner “mốc do model gợi ý — cần kiểm tra”. Người dùng có thể sửa
    label/start/crossing/end, interaction, vật và visibility trước khi lưu.
+   Proposal không có label giữ null; mọi đường lưu đều yêu cầu người dùng chọn
+   nhãn và đủ lượt tay/mốc frame theo validation hiện có.
 7. Chỉ nút **Lưu nhãn** hiện có mới ghi annotation. Sau khi lưu thành công,
    proposal chuyển accepted; xác nhận annotation vẫn là bước riêng ở Kiểm tra.
 
@@ -125,6 +138,8 @@ hiệu panel model; không khóa editor thủ công.
 ## 3. Đồng thời, lỗi và an toàn dữ liệu
 
 - Mọi mutation dùng operation ID và expected revision; không silent overwrite.
+- Cancel dùng operation ID và run ID/state hiện hành, không phụ thuộc clip
+  revision để vẫn hủy được job khi ROI vừa đổi. Accept/reject kiểm clip revision.
 - Một run giữ binding snapshot, nhưng trước publish và trước accept đều kiểm
   source/ROI/guideline hiện hành. Stale trả 409 có code riêng và giữ UI draft.
 - User đổi clip trong khi job chạy không làm proposal xuất hiện ở clip mới.
@@ -136,6 +151,12 @@ hiệu panel model; không khóa editor thủ công.
   command, arbitrary filesystem path hoặc output directory từ client.
 - Model asset hash/revision và inference config được lưu cùng run. Không silent
   fallback CPU/model/weights khác.
+
+Migration v3 phải giữ reader benchmark tương thích v2/v3 và từ chối unknown
+future schema. Thử app trên cùng data root cần dừng đúng owner launcher trước,
+backup SQLite mới có binding/hash, rồi start feature với explicit data/model
+paths. Ports khác không giải quyết lock của cùng root. Nếu v3 đã có user writes,
+không tự restore v2 làm mất dữ liệu; runbook ưu tiên sửa trên v3.
 
 ## 4. Testing và nghiệm thu
 
