@@ -185,3 +185,40 @@ class Observation(FrozenDto):
         if self.score_kind != "unavailable" and self.score is None:
             raise ValueError("score is required for the selected score kind")
         return self
+
+
+class Proposal(FrozenDto):
+    proposal_id: UUID
+    segment_id: UUID
+    local_track_id: StrictInt | None = Field(default=None, ge=0)
+    label: Literal["hand_in", "hand_out"] | None = None
+    action_span: FrameSpan | None = None
+    view_span: FrameSpan
+    crossing_estimate: StrictInt | None = Field(default=None, ge=0)
+    crossing_bracket: FrameSpan | None = None
+    reason: Literal[
+        "crossing",
+        "boundary",
+        "track_gap",
+        "association",
+        "clip_boundary",
+    ]
+
+    @model_validator(mode="after")
+    def validate_proposal_evidence(self) -> "Proposal":
+        crossing_fields = (
+            self.label,
+            self.action_span,
+            self.crossing_estimate,
+            self.crossing_bracket,
+        )
+        if self.reason == "crossing" and any(value is None for value in crossing_fields):
+            raise ValueError("crossing proposals require label, spans and estimate")
+        if self.reason != "crossing" and any(value is not None for value in crossing_fields):
+            raise ValueError("review-only proposals cannot claim crossing evidence")
+        if self.action_span and not (
+            self.view_span.start_frame <= self.action_span.start_frame
+            and self.action_span.end_frame <= self.view_span.end_frame
+        ):
+            raise ValueError("action_span must lie inside view_span")
+        return self
