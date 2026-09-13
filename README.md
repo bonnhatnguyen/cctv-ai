@@ -11,13 +11,28 @@ Hệ thống thị giác máy tính thông minh ứng dụng kiến trúc **Mult
 
 ---
 
+## 🤖 Dành Riêng Cho AI Assistant (Prompt for AI Helper)
+
+> **💡 Dành cho bạn:** Nếu bạn đang nhờ AI (ChatGPT, Claude, Cursor, Copilot, Antigravity) hỗ trợ cấu hình hoặc vận hành dự án này, hãy copy đoạn bên dưới gửi cho AI:
+
+```text
+Tôi đang triển khai dự án CCTV AI (Hệ thống giám sát quầy thu ngân và rổ tiền thông minh).
+- Backend: FastAPI, OpenCV, Ultralytics YOLO (Pose & Currency), Google MediaPipe Hands 21-Points, Roboflow Supervision (chạy cổng 8000).
+- Frontend: React 18, Vite, TypeScript, TailwindCSS (chạy cổng 5173).
+- Mã nguồn live streaming & phân tích nằm tại: backend/app/live/
+- Giao diện giám sát & cài đặt: frontend/src/LiveWebcam.tsx
+Hãy giúp tôi cấu hình file .env từ .env.example, hướng dẫn tôi tải trọng số models vào backend/weights/ và khởi động hệ thống.
+```
+
+---
+
 ## 🌟 Tính Năng Nổi Bật
 
 ### 1. Kiến Trúc AI Đa Tầng (Multi-Stage AI Pipeline)
 - **YOLO11 Pose Estimation (Khớp xương người)**: Định vị chính xác tọa độ khớp cổ tay (Wrists #9, #10) của từng đối tượng khách/nhân viên, theo dõi chuyển động tiến vào/rời khỏi vùng rổ tiền.
 - **Google MediaPipe 21-Points Hand Landmark**: Phân tích cấu trúc xương 3D của 21 khớp ngón tay trên vùng crop rổ tiền với tốc độ siêu tốc (~25ms), hiển thị khung xương Cyberpunk đa sắc màu.
 - **Gesture Recognition (Nhận diện cử chỉ)**:
-  - `Pinch` (Nhón ngón tay nhặt tiền - khoảng cách giữa đầu ngón cái #4 và ngón trỏ #8).
+  - `Pinch` (Nhón ngón tay nhặt tiền - đo khoảng cách ngón cái #4 và ngón trỏ #8).
   - `Closed_Fist` (Nắm tay giữ tiền).
   - `Open_Palm` (Xòe tay thả tiền).
 - **Nhận Diện Tiền Việt Nam VNĐ (Vietnamese Currency Detection)**: Nhận diện chính xác 9 mệnh giá tiền mặt Việt Nam (`1.000đ`, `2.000đ`, `5.000đ`, `10.000đ`, `20.000đ`, `50.000đ`, `100.000đ`, `200.000đ`, `500.000đ`) với bounding box xanh Neon Emerald và nhãn hiển thị trực tiếp.
@@ -40,11 +55,41 @@ Hệ thống thị giác máy tính thông minh ứng dụng kiến trúc **Mult
 
 ---
 
+## 📋 Hướng Dẫn Tự Cấu Hình Cho Bạn Của Bạn (2 Phút)
+
+### Bước 1: Sao chép file cấu hình mẫu
+Tại thư mục gốc dự án, sao chép file `.env.example` thành `.env`:
+```powershell
+# Trên Windows PowerShell:
+Copy-Item .env.example .env
+
+# Trên Linux / macOS:
+cp .env.example .env
+```
+
+### Bước 2: Điền thông tin Bot Telegram vào file `.env`
+Mở file `.env` vừa tạo:
+```env
+TELEGRAM_BOT_TOKEN=điền_token_bot_ở_đây
+TELEGRAM_CHAT_ID=điền_chat_id_ở_đây
+```
+
+**Cách lấy Bot Token và Chat ID siêu dễ:**
+1. **Lấy Token:** Mở Telegram, chat với bot [@BotFather](https://t.me/BotFather), gõ lệnh `/newbot`, đặt tên bot và username kết thúc bằng `_bot`. BotFather sẽ gửi cho bạn đoạn mã Token (dạng: `1234567890:AAH...`).
+2. **Kích hoạt:** Tìm bot của bạn trên Telegram và bấm **START** (hoặc gửi tin nhắn `/start`).
+3. **Lấy Chat ID:** 
+   - *Cách 1 (Tự động):* Không cần điền `TELEGRAM_CHAT_ID`. Chỉ cần điền `TELEGRAM_BOT_TOKEN`, khởi động hệ thống, mở Web UI bấm nút **"Tự động nhận diện Chat ID"**!
+   - *Cách 2:* Chat với bot [@userinfobot](https://t.me/userinfobot) trên Telegram, bot sẽ báo cho bạn biết số `Id` (ví dụ: `8269826134`). Điền số đó vào `TELEGRAM_CHAT_ID`.
+
+---
+
 ## 📁 Cấu Trúc Dự Án
 
 ```
 cctv-ai/
+├── .env.example                      # File mẫu cấu hình biến môi trường
 ├── backend/
+│   ├── .env.example                  # File mẫu cấu hình biến môi trường cho backend
 │   ├── app/
 │   │   ├── api.py                    # FastAPI root application
 │   │   ├── live/
@@ -99,7 +144,7 @@ pip install -e .
 ```
 
 ### 2. Tải Trọng Số Mô Hình AI (Models / Weights)
-Tạo thư mục `backend/weights/` (nếu chưa có) và tải các file mô hình sau đặt vào thư mục đó:
+Tạo thư mục `backend/weights/` (nếu chưa có) và đặt các file mô hình sau vào thư mục đó:
 
 | File Mô Hình | Mục Đích | Nguồn Cung Cấp |
 | :--- | :--- | :--- |
@@ -146,27 +191,6 @@ start-v1.bat
   ```
 
 Mở trình duyệt truy cập: **`http://localhost:5173`**
-
----
-
-## ⚙️ Cấu Hình Telegram Bot Cảnh Báo
-
-Bạn hoặc người triển khai có thể cấu hình bot Telegram theo 2 cách cực kỳ đơn giản:
-
-### Cách 1: Cấu hình trực tiếp trên Web UI (Tiện lợi nhất)
-1. Mở Telegram, chat với `@BotFather` để tạo bot mới và nhận **Bot Token**.
-2. Tìm bot vừa tạo trên Telegram và bấm **`START`** (hoặc gửi `/start`).
-3. Trên giao diện Web CCTV AI, mở **"Cài đặt Cảnh báo Telegram"**.
-4. Dán **Bot Token** vào ô cấu hình.
-5. Bấm nút **"Tự động nhận diện Chat ID"** -> Hệ thống sẽ tự động kết nối và bắt đúng ID tài khoản của bạn.
-6. Bấm **"Lưu cấu hình"** và bật công tắc cảnh báo!
-
-### Cách 2: Cấu hình qua Biến Môi Trường (.env)
-Tạo file `.env` tại thư mục gốc hoặc trong `backend/`:
-```env
-TELEGRAM_BOT_TOKEN=your_bot_token_here
-TELEGRAM_CHAT_ID=your_chat_id_here
-```
 
 ---
 
