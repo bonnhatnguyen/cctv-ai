@@ -122,7 +122,6 @@ it("does not switch clips when the current ROI draft is rejected by the user", a
     if (url.startsWith("/api/v2/annotations/clips")) return json({ items: [ready, second], next_cursor: null });
     throw new Error(`unexpected ${url}`);
   }));
-  const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
   render(<Workspace onBack={() => undefined} />);
   fireEvent.click(await screen.findByRole("button", { name: /Mở shop.mp4/i }));
   fireEvent.load(await screen.findByTestId("exact-frame"));
@@ -130,7 +129,8 @@ it("does not switch clips when the current ROI draft is rejected by the user", a
   Object.defineProperty(stage, "getBoundingClientRect", { value: () => ({ left: 0, top: 0, width: 800, height: 450, right: 800, bottom: 450 }) });
   fireEvent.click(stage, { clientX: 100, clientY: 100 });
   fireEvent.click(screen.getByRole("button", { name: /Mở second.mp4/i }));
-  expect(confirm).toHaveBeenCalledWith(expect.stringMatching(/ROI chưa lưu/i));
+  expect(await screen.findByText(/ROI chưa lưu/i)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Hủy bỏ" }));
   expect(screen.getByRole("heading", { name: "shop.mp4" })).toBeVisible();
 });
 

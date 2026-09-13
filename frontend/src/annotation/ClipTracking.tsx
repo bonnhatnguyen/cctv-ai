@@ -14,6 +14,7 @@ function BoundTracking({ clip }: { clip: ClipView }) {
   const [job, setJob] = useState<JobView | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
   useEffect(() => {
     if (!request || clip.source_state !== "available") return;
     const controller = new AbortController();
@@ -32,6 +33,37 @@ function BoundTracking({ clip }: { clip: ClipView }) {
     }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [request, clip.source_job_id, clip.source_state]);
+
+  // Automatic real-time polling while tracking is queued or processing
+  useEffect(() => {
+    if (!job || !["queued", "processing"].includes(job.status) || clip.source_state !== "available") return;
+    let stopped = false;
+    let controller: AbortController | null = null;
+    let timer = window.setTimeout(poll, 1000);
+
+    async function poll() {
+      controller = new AbortController();
+      try {
+        const value = await getTrackingJob(clip.source_job_id, controller.signal);
+        if (!stopped && value.id === clip.source_job_id) {
+          setJob(value);
+          if (["queued", "processing"].includes(value.status)) {
+            timer = window.setTimeout(poll, 1000);
+          }
+        }
+      } catch {
+        if (stopped) return;
+        timer = window.setTimeout(poll, 1500);
+      }
+    }
+
+    return () => {
+      stopped = true;
+      window.clearTimeout(timer);
+      controller?.abort();
+    };
+  }, [job?.id, job?.status, clip.source_job_id, clip.source_state]);
+
   return <div className="clip-tracking">
     <button type="button" className="secondary" disabled={loading || clip.source_state !== "available"}
       onClick={() => setRequest((value) => value + 1)}>
@@ -43,7 +75,12 @@ function BoundTracking({ clip }: { clip: ClipView }) {
       {job.status === "imported"
         ? <p className="preview-note">Clip này chưa chạy tracking. Bạn có thể chuẩn bị video và khoanh ROI mà không cần tracking.</p>
         : <TrackingResult job={job} annotationClip={clip} />}
-      {["queued", "processing"].includes(job.status) && <p className="preview-note">Bấm “Xem tracking của clip này” để cập nhật kết quả.</p>}
+      {["queued", "processing"].includes(job.status) && (
+        <div className="tracking-live-indicator">
+          <span className="live-dot" />
+          <span className="live-text">Hệ thống đang tự động cập nhật tiến độ theo thời gian thực…</span>
+        </div>
+      )}
     </>}
   </div>;
 }

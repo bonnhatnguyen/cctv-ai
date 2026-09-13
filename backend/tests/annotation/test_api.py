@@ -246,3 +246,28 @@ def test_action_api_workspace_mutations_and_idempotency(tmp_path, make_numbered_
         )
         assert coverage.status_code == 201
         assert coverage.json()["review_coverage"][0]["reviewed_labels"] == ["hand_out"]
+
+
+def test_delete_clip_endpoint(tmp_path, make_numbered_source):
+    settings = V1Settings(data_dir=tmp_path / "private-data")
+    application = create_app(settings=settings, worker_factory=IdleTrackingWorker)
+    with TestClient(application) as client:
+        upload = make_numbered_source(tmp_path / "delete-test.mp4", frames=8)
+        with upload.open("rb") as handle:
+            imported = client.post(
+                "/api/v1/jobs", files={"video": ("delete-test.mp4", handle, "video/mp4")}
+            ).json()
+        registered = client.post(
+            "/api/v2/annotations/clips",
+            json={"operation_id": str(uuid4()), "source_job_id": imported["id"]},
+        ).json()
+        clip = _wait_prepared(client, registered["id"])
+        assert client.get(f"/api/v2/annotations/clips/{clip['id']}").status_code == 200
+
+        # Delete the clip
+        response = client.delete(f"/api/v2/annotations/clips/{clip['id']}")
+        assert response.status_code == 204
+
+        # Verify it is gone
+        assert client.get(f"/api/v2/annotations/clips/{clip['id']}").status_code == 404
+

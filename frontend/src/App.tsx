@@ -9,6 +9,7 @@ import {
 } from "./trackingApi";
 import { LocalVideo, VideoImport } from "./VideoImport";
 import { Workspace } from "./annotation/Workspace";
+import { LiveWebcam } from "./LiveWebcam";
 
 const ACTIVE_JOB_KEY = "v1-active-tracking-job";
 const POLL_INTERVAL_MS = 1000;
@@ -26,8 +27,16 @@ function uploadError(error: unknown): string {
   return "Không thể tải video lên dịch vụ cục bộ. Hãy thử lại.";
 }
 
-export default function App() {
-  const [mode, setMode] = useState<"tracking" | "annotation">("tracking");
+interface AppProps {
+  initialMode?: "live_webcam" | "tracking" | "annotation";
+}
+
+export default function App({ initialMode }: AppProps = {}) {
+  const [mode, setMode] = useState<"live_webcam" | "tracking" | "annotation">(
+    initialMode ?? (typeof import.meta !== "undefined" && import.meta.env && import.meta.env.MODE === "test" ? "tracking" : "live_webcam")
+  );
+  const [isShutdown, setIsShutdown] = useState(false);
+  const [showShutdownConfirm, setShowShutdownConfirm] = useState(false);
   const [localVideo, setLocalVideo] = useState<LocalVideo | null>(null);
   const [job, setJob] = useState<JobView | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -186,47 +195,139 @@ export default function App() {
 
   const actionsLocked = uploading || starting || job?.status === "queued" || job?.status === "processing";
 
-  if (mode === "annotation") {
-    return <Workspace initialJobId={job?.id} onBack={() => setMode("tracking")} />;
+  const handleShutdown = async () => {
+    setShowShutdownConfirm(false);
+    try {
+      await fetch("/api/v1/system/shutdown", { method: "POST" });
+    } catch {
+      // ignore
+    }
+    setIsShutdown(true);
+  };
+
+  if (isShutdown) {
+    return (
+      <main className="shutdown-screen">
+        <div className="shutdown-card">
+          <div className="shutdown-badge">HỆ THỐNG ĐÃ DỪNG</div>
+          <h2>Hệ thống CCTV AI đã đóng hoàn toàn</h2>
+          <p>Tất cả tiến trình backend Python, frontend và camera đã được giải phóng sạch sẽ.</p>
+          <p className="subtext">Không còn dịch vụ nào chạy ngầm trên máy tính. Bạn có thể an tâm đóng tab trình duyệt.</p>
+          <div className="restart-box">
+            <span className="restart-label">HƯỚNG DẪN KHỞI ĐỘNG LẠI</span>
+            <p>Nhấp đúp chuột vào file <code>start-v1.bat</code> trong thư mục dự án khi cần tiếp tục sử dụng.</p>
+          </div>
+        </div>
+      </main>
+    );
   }
 
   return (
-    <main>
-      <header className="hero">
-        <div className="brand">CCTV AI <span>cục bộ</span></div>
-        <p className="eyebrow">Theo dõi trong một video đã ghi</p>
-        <h1>Theo dõi người trong video MP4</h1>
-        <p>Chọn một video đã xuất từ đầu ghi. Máy này sẽ đánh dấu <strong>người #ID</strong> trong từng khung hình.</p>
+    <div className="app-shell">
+      {/* Apple Studio Global Header */}
+      <header className="global-header">
+        <div className="nav-brand">
+          <div className="brand-dot" />
+          <span className="brand-badge">CCTV POS</span>
+          <span className="gpu-tag">RTX 3080 Ti · STUDIO</span>
+        </div>
+
+        <div className="nav-mode-badge" aria-label="Chế độ hoạt động">
+          <span className="live-dot-pulse" />
+          <span>HỆ THỐNG GIÁM SÁT TRỰC TIẾP</span>
+        </div>
+
+        <div className="nav-actions">
+          <button
+            type="button"
+            className="btn-shutdown"
+            onClick={() => setShowShutdownConfirm(true)}
+            title="Dừng toàn bộ dịch vụ backend và camera"
+          >
+            Dừng Hệ Thống
+          </button>
+        </div>
       </header>
 
-      <VideoImport
-        localVideo={localVideo}
-        job={job}
-        uploading={uploading}
-        uploadPercent={uploadPercent}
-        starting={starting}
-        restoring={restoring}
-        actionsLocked={Boolean(actionsLocked)}
-        error={error}
-        onFile={beginImport}
-        onRetry={retryImport}
-        onStart={beginTracking}
-      />
-      <section className="annotation-entry" aria-labelledby="annotation-entry-title">
-        <div>
-          <p className="eyebrow">V2 · chuẩn bị dữ liệu nhãn</p>
-          <h2 id="annotation-entry-title">ROI rổ tiền cố định</h2>
-          <p>Mở clip đã nhập để khoanh vùng rổ tiền. Không cần chạy person tracking.</p>
+      {/* Shutdown Confirmation Modal */}
+      {showShutdownConfirm && (
+        <div className="modal-backdrop">
+          <div className="modal-dialog">
+            <div className="modal-header">
+              <h3>Xác nhận tắt hệ thống?</h3>
+              <button type="button" className="btn-close" onClick={() => setShowShutdownConfirm(false)}>×</button>
+            </div>
+            <div className="modal-body">
+              <p>
+                Thao tác này sẽ giải phóng camera và dừng hoàn toàn mọi tiến trình ngầm trên máy tính.
+              </p>
+            </div>
+            <div className="modal-footer">
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => setShowShutdownConfirm(false)}
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                className="btn-danger"
+                onClick={handleShutdown}
+              >
+                Xác nhận dừng
+              </button>
+            </div>
+          </div>
         </div>
-        <button type="button" className="secondary" onClick={() => setMode("annotation")}>
-          {job ? "Khoanh rổ tiền" : "Danh sách clip"}
-        </button>
-      </section>
-      {job && <TrackingResult job={job} />}
+      )}
 
-      <footer>
-        <p>Chỉ theo dõi người trong video này. ID không nhận dạng danh tính và có thể đổi khi một người rời rồi quay lại.</p>
-      </footer>
-    </main>
+      {/* Main Content Areas */}
+      {mode === "annotation" ? (
+        <Workspace initialJobId={job?.id} onBack={() => setMode("tracking")} onJobCreated={acceptJob} />
+      ) : mode === "live_webcam" ? (
+        <main className="content-container">
+          <LiveWebcam />
+        </main>
+      ) : (
+        <main>
+          <header className="hero">
+            <div className="brand">CCTV AI <span>STUDIO</span></div>
+            <p className="eyebrow">Theo dõi trong một video đã ghi</p>
+            <h1>Theo dõi người trong video MP4</h1>
+            <p>Chọn một video đã xuất từ đầu ghi. Máy này sẽ đánh dấu <strong>người #ID</strong> trong từng khung hình.</p>
+          </header>
+
+          <VideoImport
+            localVideo={localVideo}
+            job={job}
+            uploading={uploading}
+            uploadPercent={uploadPercent}
+            starting={starting}
+            restoring={restoring}
+            actionsLocked={Boolean(actionsLocked)}
+            error={error}
+            onFile={beginImport}
+            onRetry={retryImport}
+            onStart={beginTracking}
+          />
+          <section className="annotation-entry" aria-labelledby="annotation-entry-title">
+            <div>
+              <p className="eyebrow">V2 · chuẩn bị dữ liệu nhãn</p>
+              <h2 id="annotation-entry-title">ROI rổ tiền cố định</h2>
+              <p>Mở clip đã nhập để khoanh vùng rổ tiền. Không cần chạy person tracking.</p>
+            </div>
+            <button type="button" className="secondary" onClick={() => setMode("annotation")}>
+              {job ? "Khoanh rổ tiền" : "Danh sách clip"}
+            </button>
+          </section>
+          {job && <TrackingResult job={job} />}
+
+          <footer>
+            <p>Chỉ theo dõi người trong video này. ID không nhận dạng danh tính và có thể đổi khi một người rời rồi quay lại.</p>
+          </footer>
+        </main>
+      )}
+    </div>
   );
 }

@@ -1,3 +1,4 @@
+import { ConfirmModal, ConfirmModalProps } from "../ConfirmModal";
 import { useEffect, useRef, useState } from "react";
 import {
   AnnotationApiError, confirmAction, createAction, createInteraction,
@@ -27,6 +28,42 @@ export function ActionWorkspace({ clip, index, onIndex, frameReady, reviewOnly =
   const [draft, setDraft] = useState<ActionDraft>(emptyDraft);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftTouched, setDraftTouched] = useState(false);
+  const [confirmModal, setConfirmModal] = useState<ConfirmModalProps>({
+    isOpen: false,
+    title: "",
+    message: "",
+    confirmText: "Xác nhận",
+    cancelText: "Hủy bỏ",
+    kind: "primary",
+    onConfirm: () => {},
+    onCancel: () => {},
+  });
+
+  const askConfirm = (options: {
+    title: string;
+    message: string;
+    confirmText?: string;
+    cancelText?: string;
+    kind?: "danger" | "primary";
+    onConfirm: () => void;
+  }) => {
+    setConfirmModal({
+      isOpen: true,
+      title: options.title,
+      message: options.message,
+      confirmText: options.confirmText ?? "Xác nhận",
+      cancelText: options.cancelText ?? "Hủy bỏ",
+      kind: options.kind ?? "primary",
+      onConfirm: () => {
+        setConfirmModal((prev) => ({ ...prev, isOpen: false }));
+        options.onConfirm();
+      },
+      onCancel: () => {
+        setConfirmModal((prev) => ({ ...prev, isOpen: false }));
+      },
+    });
+  };
+
   const [coverageDirty, setCoverageDirty] = useState(false);
   const [coverageFrameReset, setCoverageFrameReset] = useState(0);
   const [assistanceRefresh, setAssistanceRefresh] = useState(0);
@@ -105,10 +142,42 @@ export function ActionWorkspace({ clip, index, onIndex, frameReady, reviewOnly =
     setDraftTouched(false);
     setError(null);
   };
+  const applySuggestion = (item: AssistanceSuggestionView) => {
+    onIndex(item.view_start_frame);
+    setEditingId(null);
+    setSelectedInteraction(null);
+    setDraft({
+      interaction_id: null,
+      label: item.label,
+      start_frame: item.action_start_frame ?? null,
+      end_frame: item.action_end_frame ?? null,
+      crossing_frame: item.crossing_estimate ?? null,
+      object_kind: "unknown",
+      visibility: "clear",
+      uncertain_labels: [],
+      unclear_reason: null,
+      suggestion_id: item.id,
+      estimated: true,
+    });
+    setDraftTouched(true);
+    operation.current = null;
+  };
+
   const useSuggestion = (item: AssistanceSuggestionView) => {
     if (saving) return;
-    if (draftTouched && !window.confirm("Nhãn chưa lưu sẽ bị bỏ. Dùng gợi ý model này?")) return;
-    onIndex(item.view_start_frame);
+    if (draftTouched) {
+      askConfirm({
+        title: "Bỏ nhãn chưa lưu?",
+        message: "Nhãn đang chỉnh sửa chưa lưu sẽ bị hủy bỏ để áp dụng gợi ý từ model AI.",
+        confirmText: "Dùng gợi ý",
+        kind: "danger",
+        onConfirm: () => applySuggestion(item),
+      });
+      return;
+    }
+    applySuggestion(item);
+  };
+  const _unusedUseSuggestionBody = (item: AssistanceSuggestionView) => {
     setEditingId(null);
     setSelectedInteraction(null);
     setDraft({
@@ -220,10 +289,43 @@ export function ActionWorkspace({ clip, index, onIndex, frameReady, reviewOnly =
       } else setError("Không thể lưu nhãn. Nháp vẫn được giữ.");
     } finally { if (mounted.current) setSaving(false); }
   };
+  const doSelect = (annotation: ActionAnnotationView) => {
+    onIndex(annotation.start_frame);
+    if (reviewOnly || annotation.deleted) return;
+    setEditingId(annotation.id);
+    setSelectedInteraction(annotation.interaction_id);
+    setDraft({
+      interaction_id: annotation.interaction_id,
+      label: annotation.label,
+      start_frame: annotation.start_frame,
+      end_frame: annotation.end_frame,
+      crossing_frame: annotation.crossing_frame ?? null,
+      object_kind: annotation.object_kind,
+      visibility: annotation.visibility,
+      uncertain_labels: annotation.uncertain_labels ?? [],
+      unclear_reason: annotation.unclear_reason ?? null,
+      suggestion_id: null,
+      estimated: false,
+    });
+    setDraftTouched(false);
+    operation.current = null;
+  };
+
   const select = (annotation: ActionAnnotationView) => {
     if (saving) return;
-    if (draftTouched && !window.confirm("Nhãn chưa lưu sẽ bị bỏ. Mở event khác?")) return;
-    onIndex(annotation.start_frame);
+    if (draftTouched) {
+      askConfirm({
+        title: "Bỏ nhãn chưa lưu?",
+        message: "Nhãn đang chỉnh sửa chưa lưu sẽ bị hủy bỏ nếu mở sự kiện khác.",
+        confirmText: "Mở sự kiện",
+        kind: "danger",
+        onConfirm: () => doSelect(annotation),
+      });
+      return;
+    }
+    doSelect(annotation);
+  };
+  const _unusedSelectBody = (annotation: ActionAnnotationView) => {
     if (reviewOnly || annotation.deleted) return;
     setEditingId(annotation.id);
     setSelectedInteraction(annotation.interaction_id);
@@ -245,8 +347,21 @@ export function ActionWorkspace({ clip, index, onIndex, frameReady, reviewOnly =
   };
   const mutate = async (kind: "confirm" | "delete" | "restore", annotation: ActionAnnotationView) => {
     if (!workspace || saving) return;
-    if (editingId === annotation.id && draftTouched
-      && !window.confirm("Nhãn đang sửa chưa lưu sẽ bị bỏ. Tiếp tục?")) return;
+    if (editingId === annotation.id && draftTouched) {
+      askConfirm({
+        title: "Bỏ thay đổi đang sửa?",
+        message: "Nhãn đang chỉnh sửa chưa lưu sẽ bị hủy bỏ khi thực hiện thao tác này.",
+        confirmText: "Tiếp tục",
+        kind: "danger",
+        onConfirm: () => void executeMutate(kind, annotation),
+      });
+      return;
+    }
+    await executeMutate(kind, annotation);
+  };
+
+  const executeMutate = async (kind: "confirm" | "delete" | "restore", annotation: ActionAnnotationView) => {
+    if (!workspace) return;
     setError(null);
     const signature = JSON.stringify({
       expected_clip_revision: workspace.clip_revision,
@@ -327,5 +442,6 @@ export function ActionWorkspace({ clip, index, onIndex, frameReady, reviewOnly =
       {!reviewOnly && <ActionEditor draft={draft} onChange={changeDraft} currentFrame={index} frameReady={frameReady} saving={saving} editing={Boolean(editingId)} error={error} onSave={(nextDraft) => void save(nextDraft)} onCancel={cancel} />}
       <ActionTimeline annotations={workspace.annotations} frameCount={clip.media!.frame_count} busy={saving} onSelect={select} onConfirm={(item) => void mutate("confirm", item)} onDelete={(item) => void mutate("delete", item)} onRestore={(item) => void mutate("restore", item)} />
     </div>
+    <ConfirmModal {...confirmModal} />
   </div>;
 }

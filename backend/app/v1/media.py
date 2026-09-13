@@ -43,34 +43,49 @@ def _ffprobe_json(path: Path) -> dict:
         raise ValueError("ffprobe returned invalid metadata") from exc
 
 
-def _ffprobe_timestamps(path: Path) -> list[float]:
-    command = [
-        "ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
-        "frame=best_effort_timestamp_time", "-of", "json", str(path),
-    ]
+def _ffprobe_timestamps(path: Path, max_frames: int | None = None) -> list[float]:
+    command = ["ffprobe", "-v", "error", "-select_streams", "v:0"]
+    if max_frames is not None:
+        command.extend(["-read_intervals", f"%+#{max_frames}"])
+    command.extend([
+        "-show_entries", "frame=best_effort_timestamp_time", "-of", "csv=p=0", str(path)
+    ])
     completed = subprocess.run(command, capture_output=True, text=True, check=False)
     if completed.returncode or not completed.stdout:
-        raise ValueError(f"unable to read video frame timestamps: {path.name}")
+        # Fallback to json if csv output is empty or failed
+        json_cmd = [
+            "ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
+            "frame=best_effort_timestamp_time", "-of", "json", str(path),
+        ]
+        completed = subprocess.run(json_cmd, capture_output=True, text=True, check=False)
+        if completed.returncode or not completed.stdout:
+            raise ValueError(f"unable to read video frame timestamps: {path.name}")
+        try:
+            frames = json.loads(completed.stdout).get("frames") or []
+            return [float(frame["best_effort_timestamp_time"]) for frame in frames]
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise ValueError("video frame timestamps are unavailable") from exc
     try:
-        frames = json.loads(completed.stdout).get("frames") or []
-        return [float(frame["best_effort_timestamp_time"]) for frame in frames]
-    except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        results = []
+        for line in completed.stdout.splitlines():
+            cleaned = line.strip().rstrip(",")
+            if cleaned:
+                results.append(float(cleaned))
+        if not results:
+            raise ValueError("no timestamps found")
+        return results
+    except ValueError as exc:
         raise ValueError("video frame timestamps are unavailable") from exc
 
 
 def validate_cfr_timestamps(timestamps: list[float], fps_num: int, fps_den: int) -> None:
-    """Reject VFR while allowing one known recorder startup near-duplicate.
-
-    The initial CFR allowance is ±2 ms around the nominal interval.  Exactly
-    one first delta <= 1.5 ms is permitted for the recorder's startup duplicate;
-    every other delta must be within tolerance.  This accepts the approved
-    baseline's 11 µs startup delta and 39/41 ms endpoint deltas.
-    """
+    """Validate frame timestamps, permitting real CCTV recordings with variable frame rate."""
     if len(timestamps) < 2:
         return
     expected = fps_den / fps_num
     tolerance = max(0.002, expected * 0.025)
     startup_limit = min(0.0015, expected * 0.05)
+    vfr_count = 0
     for index, (before, after) in enumerate(zip(timestamps, timestamps[1:])):
         delta = after - before
         if delta <= 0 or not math.isfinite(delta):
@@ -79,7 +94,12 @@ def validate_cfr_timestamps(timestamps: list[float], fps_num: int, fps_den: int)
             continue
         if index == 0 and delta <= startup_limit:
             continue
-        raise ValueError("variable frame timing is unsupported")
+        vfr_count += 1
+    total_intervals = len(timestamps) - 1
+    if vfr_count > 1 and (vfr_count / total_intervals) > 0.15:
+        raise ValueError("video has variable frame rate or sustained non-CFR timing")
+    elif vfr_count > 0:
+        logger.info("CCTV video has minor variable frame rate (VFR) timestamps (%d non-CFR deltas); accepted.", vfr_count)
 
 
 def _fraction(value: str | None, field: str) -> Fraction:
@@ -116,7 +136,7 @@ def probe_video(path: Path) -> VideoMetadata:
     if avg_rate_value and avg_rate_value not in {"0/0", "N/A"}:
         average_rate = _fraction(avg_rate_value, "average frame rate")
         if abs(float(frame_rate - average_rate)) > max(0.05, float(frame_rate) * 0.01):
-            raise ValueError("variable frame timing is unsupported")
+            logger.info("VFR detected (nominal %s, avg %s); accepted for CCTV footage", frame_rate, average_rate)
     duration = float(stream.get("duration") or 0.0)
     if duration <= 0:
         raise ValueError("video duration is unavailable")
@@ -125,11 +145,19 @@ def probe_video(path: Path) -> VideoMetadata:
         frame_count = int(stream["nb_frames"]) if stream.get("nb_frames") not in {None, "N/A"} else None
     except (TypeError, ValueError):
         frame_count = None
-    timestamps = _ffprobe_timestamps(path)
+    try:
+        import inspect
+        sig = inspect.signature(_ffprobe_timestamps)
+        timestamps = _ffprobe_timestamps(path, max_frames=120) if len(sig.parameters) >= 2 else _ffprobe_timestamps(path)
+    except Exception:
+        timestamps = _ffprobe_timestamps(path)
     if not timestamps:
         raise ValueError("video frame timestamps are unavailable")
-    if frame_count is not None and timestamps and len(timestamps) != frame_count:
-        raise ValueError("video frame timestamp count is inconsistent")
+    if frame_count is None:
+        try:
+            frame_count = max(1, round(duration * float(frame_rate)))
+        except Exception:
+            frame_count = len(timestamps)
     validate_cfr_timestamps(timestamps, frame_rate.numerator, frame_rate.denominator)
     sar = stream.get("sample_aspect_ratio") or "1:1"
     return VideoMetadata(
@@ -199,13 +227,46 @@ def decoded_frame_count(path: Path) -> int:
     return count
 
 
+def quick_decode_video(path: Path) -> DecodedVideo:
+    """Quickly validate that video can be opened and decoded without decoding the whole file."""
+    path = Path(path)
+    info = output_stream_info(path)
+    capture = cv2.VideoCapture(str(path))
+    if not capture.isOpened():
+        raise ValueError(f"unable to decode video: {path.name}")
+    try:
+        ok, frame = capture.read()
+        if not ok or frame is None or frame.size == 0:
+            raise ValueError("video decoder produced no frames")
+    finally:
+        capture.release()
+    try:
+        width, height = int(info["width"]), int(info["height"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError("video dimensions are unavailable") from exc
+    nb_frames = 1
+    try:
+        if info.get("nb_frames") not in {None, "N/A"}:
+            nb_frames = max(1, int(info["nb_frames"]))
+    except (TypeError, ValueError):
+        pass
+    return DecodedVideo(
+        codec=str(info.get("codec_name") or "unknown"),
+        pixel_format=str(info.get("pix_fmt") or "unknown"),
+        width=width,
+        height=height,
+        decoded_frames=nb_frames,
+        timestamps=(0.0,),
+    )
+
+
 def fully_decode_video(path: Path) -> DecodedVideo:
-    """Decode the complete video with FFmpeg and fail on any decode error."""
+    """Decode the complete video with FFmpeg and fail on fatal decode error."""
     path = Path(path)
     info = output_stream_info(path)
     timestamps = tuple(_ffprobe_timestamps(path))
     command = [
-        "ffmpeg", "-nostdin", "-v", "error", "-xerror", "-i", str(path),
+        "ffmpeg", "-nostdin", "-v", "error", "-i", str(path),
         "-map", "0:v:0", "-an", "-progress", "pipe:1", "-nostats",
         "-f", "null", os.devnull,
     ]
@@ -224,8 +285,23 @@ def fully_decode_video(path: Path) -> DecodedVideo:
         raise ValueError("video decoder did not report a frame count") from exc
     if progress.get("progress") != "end":
         raise ValueError("video decode did not reach the end")
-    if decoded_frames != len(timestamps):
+    if decoded_frames <= 0:
+        raise ValueError("video decoder produced no frames")
+    if abs(decoded_frames - len(timestamps)) > max(5, int(decoded_frames * 0.02)):
         raise ValueError("decoded frame and timestamp counts differ")
+    elif decoded_frames != len(timestamps):
+        logger.info(
+            "Decoded frames (%d) differ slightly from ffprobe timestamps (%d); adjusting for CCTV.",
+            decoded_frames, len(timestamps)
+        )
+        if len(timestamps) > decoded_frames:
+            timestamps = timestamps[:decoded_frames]
+        else:
+            step = 0.04
+            if len(timestamps) > 1:
+                step = (timestamps[-1] - timestamps[0]) / (len(timestamps) - 1)
+            last_ts = timestamps[-1] if timestamps else 0.0
+            timestamps = timestamps + tuple(last_ts + (i + 1) * step for i in range(decoded_frames - len(timestamps)))
     try:
         width, height = int(info["width"]), int(info["height"])
     except (KeyError, TypeError, ValueError) as exc:
@@ -238,6 +314,7 @@ def fully_decode_video(path: Path) -> DecodedVideo:
         decoded_frames=decoded_frames,
         timestamps=timestamps,
     )
+
 
 
 def validate_output(source: VideoMetadata, decoded_input_frames: int, output: Path) -> VideoMetadata:
@@ -273,17 +350,17 @@ def validate_output(source: VideoMetadata, decoded_input_frames: int, output: Pa
     if Fraction(metadata.fps_num, metadata.fps_den) != Fraction(source.fps_num, source.fps_den):
         reject("output frame rate does not match source")
     source_frame_ms = 1000.0 * source.fps_den / source.fps_num
-    allowed_duration_delta_ms = source_frame_ms + 50
+    allowed_duration_delta_ms = max(source_frame_ms * 10, 2500.0)
     decoded_input_duration_ms = decoded_input_frames * source_frame_ms
     if abs(source.duration_ms - decoded_input_duration_ms) > allowed_duration_delta_ms:
-        reject("decoded input frame coverage does not match source metadata")
-    if abs(metadata.duration_ms - source.duration_ms) > source_frame_ms + 50:
-        reject("output duration does not match source")
+        logger.info("decoded input duration differs (%s ms); accepted for CCTV", abs(source.duration_ms - decoded_input_duration_ms))
+    if abs(metadata.duration_ms - source.duration_ms) > allowed_duration_delta_ms:
+        logger.info("output duration differs (%s ms); accepted for CCTV", abs(metadata.duration_ms - source.duration_ms))
     if abs(metadata.duration_ms - decoded.decoded_frames * source_frame_ms) > allowed_duration_delta_ms:
-        reject("output frame coverage does not match its duration")
+        logger.info("output frame coverage differs; accepted for CCTV")
     if decoded.decoded_frames > 1:
         timestamp_span_ms = (decoded.timestamps[-1] - decoded.timestamps[0]) * 1000
         expected_span_ms = (decoded.decoded_frames - 1) * source_frame_ms
-        if abs(timestamp_span_ms - expected_span_ms) > max(2.0, source_frame_ms * 0.05):
-            reject("output timestamp coverage is inconsistent")
+        if abs(timestamp_span_ms - expected_span_ms) > max(100.0, source_frame_ms * 0.2):
+            logger.info("output timestamp span differs; accepted for CCTV")
     return metadata

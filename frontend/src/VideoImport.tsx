@@ -96,8 +96,21 @@ export function VideoImport({
           </div>
           {uploading && (
             <div className="upload-state" role="status">
-              <span>{uploadPercent === null ? "Đang tải lên…" : `Đang tải lên: ${uploadPercent}%`}</span>
-              {uploadPercent !== null && <progress value={uploadPercent} max={100} />}
+              {uploadPercent === 100 ? (
+                <span className="upload-processing-text">
+                  <span className="upload-spinner" aria-hidden="true" />
+                  Đang kiểm tra & phân tích video trên máy chủ…
+                </span>
+              ) : (
+                <span>{uploadPercent === null ? "Đang tải lên…" : `Đang tải lên: ${uploadPercent}%`}</span>
+              )}
+              {uploadPercent !== null && (
+                <progress
+                  value={uploadPercent}
+                  max={100}
+                  className={uploadPercent === 100 ? "progress-pulsing" : ""}
+                />
+              )}
             </div>
           )}
         </div>

@@ -355,6 +355,15 @@ class FrameService:
                 raise FrameIntegrityError("clean preview is missing or corrupt")
             yield path
 
+    def delete_clip_media(self, clip_id: UUID) -> None:
+        self._drop_clip_cache(clip_id)
+        target = (self.root / "prepared" / str(clip_id)).resolve()
+        if target.exists():
+            shutil.rmtree(target, ignore_errors=True)
+        staging = self.root / "staging" / str(clip_id)
+        if staging.exists():
+            shutil.rmtree(staging, ignore_errors=True)
+
     def release_generation(self, clip_id: UUID) -> None:
         clip = self.repository.get_private_clip(clip_id)
         if clip.preparation_state != "releasing":

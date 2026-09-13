@@ -77,6 +77,15 @@ export const retryClip = (id: string, body: RetryPreparation, signal?: AbortSign
   request<ClipView>(`/api/v2/annotations/clips/${encodeURIComponent(id)}/retry`, jsonInit("POST", body, signal));
 export const releaseClip = (id: string, body: ReleasePreparedMedia, signal?: AbortSignal) =>
   request<ClipView>(`/api/v2/annotations/clips/${encodeURIComponent(id)}/release`, jsonInit("POST", body, signal));
+export const deleteClip = async (id: string, signal?: AbortSignal): Promise<void> => {
+  const response = await fetch(`/api/v2/annotations/clips/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    signal,
+  });
+  if (!response.ok && response.status !== 204) {
+    throw new AnnotationApiError(response.status, "delete_failed");
+  }
+};
 export const getStorage = (signal?: AbortSignal) => request<StorageView>("/api/v2/annotations/storage", { signal });
 export const listSetups = (signal?: AbortSignal) => request<CameraSetupListView>("/api/v2/annotations/setups", { signal });
 export const createSetup = (body: CameraSetupCreate, signal?: AbortSignal) =>

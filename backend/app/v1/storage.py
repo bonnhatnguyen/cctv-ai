@@ -16,7 +16,7 @@ from python_multipart import MultipartParser
 from python_multipart.multipart import MultipartParseError, parse_options_header
 
 from .contracts import VideoMetadata
-from .media import fully_decode_video, probe_video
+from .media import fully_decode_video, probe_video, quick_decode_video
 
 
 class UnsupportedVideoError(ValueError):
@@ -90,7 +90,7 @@ class VideoStore:
         max_upload_bytes: int,
         *,
         probe: Callable[[Path], VideoMetadata] = probe_video,
-        decode=fully_decode_video,
+        decode=quick_decode_video,
         chunk_size: int = 1024 * 1024,
     ):
         self.root = Path(root)

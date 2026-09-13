@@ -125,6 +125,8 @@ it("keeps the draft and reuses its operation id after a lost response", async ()
   render(<ActionWorkspace clip={clip} index={9} onIndex={vi.fn()} frameReady
     onClipRevision={vi.fn()} onClipReload={vi.fn()} onDirtyChange={dirty} />);
   await screen.findByText("Lượt 1");
+  await screen.findByRole("button", { name: /Bắt đầu —/ });
+  (document.activeElement as HTMLElement)?.blur();
   fireEvent.keyDown(window, { key: "i" });
   fireEvent.keyDown(window, { key: "c" });
   fireEvent.keyDown(window, { key: "o" });
@@ -264,13 +266,14 @@ it("asks before replacing an unsaved draft with a saved event", async () => {
   };
   mocks.get.mockResolvedValue({ ...workspace, annotations: [event] });
   const seek = vi.fn();
-  const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
   render(<ActionWorkspace clip={clip} index={7} onIndex={seek} frameReady
     onClipRevision={vi.fn()} onClipReload={vi.fn()} onDirtyChange={vi.fn()} />);
   await screen.findByText("Lượt 1");
+  (document.activeElement as HTMLElement)?.blur();
   fireEvent.keyDown(window, { key: "i" });
   fireEvent.click(screen.getByRole("button", { name: /Put in\s*2–3/ }));
-  expect(confirm).toHaveBeenCalledWith(expect.stringMatching(/chưa lưu/i));
+  expect(await screen.findByRole("heading", { name: /chưa lưu/i })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Hủy bỏ" }));
   expect(seek).not.toHaveBeenCalled();
   expect(screen.getByRole("heading", { name: "Nhãn mới" })).toBeVisible();
 });

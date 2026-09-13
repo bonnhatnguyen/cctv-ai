@@ -269,6 +269,15 @@ def create_router(
         except Exception as exc:
             _raise_domain_error(exc)
 
+    @router.delete("/clips/{clip_id}", status_code=status.HTTP_204_NO_CONTENT)
+    def delete_clip(clip_id: UUID):
+        try:
+            frames.delete_clip_media(clip_id)
+            repository.delete_clip(clip_id)
+            return Response(status_code=status.HTTP_204_NO_CONTENT)
+        except Exception as exc:
+            _raise_domain_error(exc)
+
     @router.post("/clips/{clip_id}/release", response_model=ClipView, status_code=status.HTTP_202_ACCEPTED)
     def release_clip(clip_id: UUID, request: ReleasePreparedMedia):
         try:

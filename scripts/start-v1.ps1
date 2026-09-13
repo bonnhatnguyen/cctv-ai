@@ -596,6 +596,20 @@ try {
         Write-LauncherLog "Reusing verified V1 backend at $BackendUrl."
     }
     else {
+        if (Test-TcpPort $BackendPort) {
+            Write-LauncherLog "Port $BackendPort is in use. Checking for dangling project process..."
+            $conns = Get-NetTCPConnection -LocalPort $BackendPort -ErrorAction SilentlyContinue
+            foreach ($c in $conns) {
+                try {
+                    $p = Get-Process -Id $c.OwningProcess -ErrorAction SilentlyContinue
+                    if ($p -and ($p.ProcessName -like "*python*" -or $p.ProcessName -like "*uvicorn*")) {
+                        Write-LauncherLog "Terminating dangling $($p.ProcessName) (PID $($p.Id)) on port $BackendPort..."
+                        Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+                        Start-Sleep -Milliseconds 600
+                    }
+                } catch {}
+            }
+        }
         $requestedBackendPort = $BackendPort
         $BackendPort = Find-FreePort $BackendPort "the V1 backend"
         Update-ServiceUrls
@@ -657,6 +671,20 @@ try {
     }
 
     if ($null -eq $state.frontend) {
+        if (Test-TcpPort $FrontendPort) {
+            Write-LauncherLog "Port $FrontendPort is in use. Checking for dangling frontend process..."
+            $conns = Get-NetTCPConnection -LocalPort $FrontendPort -ErrorAction SilentlyContinue
+            foreach ($c in $conns) {
+                try {
+                    $p = Get-Process -Id $c.OwningProcess -ErrorAction SilentlyContinue
+                    if ($p -and ($p.ProcessName -like "*node*" -or $p.ProcessName -like "*pnpm*")) {
+                        Write-LauncherLog "Terminating dangling $($p.ProcessName) (PID $($p.Id)) on port $FrontendPort..."
+                        Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+                        Start-Sleep -Milliseconds 600
+                    }
+                } catch {}
+            }
+        }
         $requestedFrontendPort = $FrontendPort
         $FrontendPort = Find-FreePort $FrontendPort "the V1 frontend"
         Update-ServiceUrls

@@ -29,5 +29,8 @@ const runtimeIdentity = {
 export default defineConfig({
   plugins: [runtimeIdentity, react()],
   server: { proxy: { "/api": apiTarget } },
-  test: { environment: "jsdom" },
+  test: {
+    environment: "jsdom",
+    setupFiles: ["./src/test-setup.ts"],
+  },
 });

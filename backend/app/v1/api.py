@@ -21,6 +21,9 @@ from app.annotation.assistance_worker import AssistanceWorker
 from app.annotation.repository import AnnotationRepository
 from app.annotation.settings import AnnotationSettings, resolve_v1_data_dir
 from app.annotation.worker import PreparationWorker
+from app.live.api import live_router, router as live_webcam_router
+from app.live.shutdown import router as system_shutdown_router
+from app.live.webcam import webcam_service
 
 from .database import create_database
 from .jobs import JobConflictError, JobNotFoundError, JobRepository, JobView
@@ -178,6 +181,7 @@ def create_app(
         finally:
             errors: list[BaseException] = []
             for stop in (
+                webcam_service.stop,
                 assistance_worker.stop, annotation_worker.stop, worker.stop,
                 annotation_database.close,
             ):
@@ -202,6 +206,9 @@ def create_app(
     application.state.annotation_worker = annotation_worker
     application.state.assistance_store = assistance_store
     application.state.assistance_worker = assistance_worker
+    application.include_router(live_webcam_router)
+    application.include_router(live_router)
+    application.include_router(system_shutdown_router)
     application.include_router(
         create_annotation_router(
             annotation_repository,

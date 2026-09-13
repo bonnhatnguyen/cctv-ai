@@ -3,8 +3,8 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { useExactFrame } from "./useExactFrame";
 
 function response(index: number, sourceHash: string) {
-  return new Response(new Blob([`frame-${index}`], { type: "image/png" }), {
-    headers: { "X-Frame-Index": String(index), "X-Source-SHA256": sourceHash },
+  return new Response(`frame-${index}`, {
+    headers: { "X-Frame-Index": String(index), "X-Source-SHA256": sourceHash, "Content-Type": "image/png" },
   });
 }
 

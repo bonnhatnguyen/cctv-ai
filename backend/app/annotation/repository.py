@@ -953,6 +953,13 @@ class AnnotationRepository:
             )
             return result
 
+    def delete_clip(self, clip_id: UUID) -> None:
+        with self.database.write_transaction() as connection:
+            self._require_clip(connection, clip_id)
+            connection.execute("UPDATE annotation_clips SET roi_revision_id = NULL WHERE id = ?", (str(clip_id),))
+            connection.execute("DELETE FROM operations WHERE resource_id = ?", (str(clip_id),))
+            connection.execute("DELETE FROM annotation_clips WHERE id = ?", (str(clip_id),))
+
     def release_prepared_media(
         self, clip_id: UUID, request: ReleasePreparedMedia
     ) -> ClipView:

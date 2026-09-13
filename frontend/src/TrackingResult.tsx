@@ -57,6 +57,15 @@ export function TrackingResult({ job, annotationClip }: { job: JobView; annotati
             <small>Dựa trên số khung hình ước tính; chỉ hoàn tất sau bước kiểm tra video.</small>
           </div>
         )}
+        {percent === null && ["queued", "loading", "encoding", "validating"].includes(job.stage) && (
+          <div className="tracking-progress apple-stage-progress">
+            <div className="apple-stage-indicator">
+              <span className="live-dot" />
+              <span>Hệ thống đang tự động xử lý và đồng bộ tiến độ thời gian thực...</span>
+            </div>
+            <progress className="apple-indeterminate-bar" />
+          </div>
+        )}
       </section>
     );
   }
