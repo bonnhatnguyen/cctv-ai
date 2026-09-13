@@ -87,6 +87,7 @@ it("saves hand_in from exact I/C/O shortcuts with a caller-owned operation id", 
   render(<ActionWorkspace clip={clip} index={7} onIndex={vi.fn()} frameReady
     onClipRevision={vi.fn()} onClipReload={vi.fn()} onDirtyChange={vi.fn()} />);
   await screen.findByText("Lượt 1");
+  await screen.findByRole("button", { name: /Bắt đầu —/ });
   fireEvent.keyDown(window, { key: "i" });
   fireEvent.keyDown(window, { key: "c" });
   fireEvent.keyDown(window, { key: "o" });
@@ -104,8 +105,7 @@ it("reviews a model proposal through the normal draft save path", async () => {
   const seek = vi.fn();
   render(<ActionWorkspace clip={clip} index={7} onIndex={seek} frameReady
     onClipRevision={vi.fn()} onClipReload={vi.fn()} onDirtyChange={vi.fn()} />);
-  await screen.findByText("Model hỗ trợ");
-  fireEvent.click(screen.getByRole("button", { name: "Dùng làm nháp" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Dùng làm nháp" }));
   expect(screen.getByText(/Mốc do model gợi ý/i)).toBeVisible();
   fireEvent.click(screen.getByRole("button", { name: /Lượt 1/ }));
   fireEvent.click(screen.getByRole("button", { name: "Lưu nhãn" }));

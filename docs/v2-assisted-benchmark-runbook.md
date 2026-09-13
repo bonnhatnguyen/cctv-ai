@@ -105,6 +105,16 @@ In both cases inspect exact frames, correct `hand_in`/`hand_out`, and review
 footage outside proposal spans. Only the operator writes labels and explicit
 review coverage. Empty proposals never mean “no action”.
 
+UI assistance freezes source/ROI/guideline, device, stride, config hash and
+model-manifest hash when queued. It verifies source bytes before inference and
+again before publish, rejects a child schedule or proposal outside the requested
+range, persists monotonic progress, and keeps bounded checksummed private
+artifacts under `annotations/assistance/runs/<run-uuid>/`. Changing source or
+ROI makes unreviewed proposals stale. Run history is newest-first and paginated;
+start/cancel/reject retries reuse their operation ID after an uncertain network
+failure. The annotation database stores the per-run stride in schema v4, so a
+queued run does not silently adopt a later global sampling setting.
+
 Non-crossing reasons (`boundary`, `track_gap`, `association`, `clip_boundary`)
 are review-only and carry no predicted label. MediaPipe handedness is not a
 detection confidence or stable hand identity.

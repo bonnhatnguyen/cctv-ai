@@ -131,6 +131,11 @@ class FrameService:
             raise SourceChanged("source bytes no longer match the prepared clip")
         return source
 
+    def verify_source_path(self, clip: PrivateAnnotationClip) -> Path:
+        """Resolve and hash-check the immutable source before external inference."""
+        self._source_identity.pop(str(clip.id), None)
+        return self._verify_source(clip)
+
     def prepared_root(self, clip_id: UUID) -> Path:
         clip = self.repository.get_private_clip(clip_id)
         if clip.generation_id is None:

@@ -280,7 +280,7 @@ the focused regression and the full 14-file / 57-test suite then passed.
 ## Assisted review integration / UI software gate — 2026-09-13
 
 - V2 now persists assistance runs and proposal review state in annotation schema
-  v3. The API exposes model availability, create/list/get/cancel run operations,
+  v4 (v3 introduced the tables; v4 freezes each run's sampling stride). The API exposes model availability, create/list/get/cancel run operations,
   pending suggestion listing and idempotent rejection without exposing source or
   model filesystem paths.
 - DINO and MediaPipe execute in the isolated benchmark environment through an
@@ -314,3 +314,34 @@ the focused regression and the full 14-file / 57-test suite then passed.
 short smoke proves execution and truthful lifecycle only. It does not change
 the earlier need for confirmed `hand_in`/`hand_out` references, class-specific
 coverage and paired timed review before claiming quality or labeling-time ROI.
+
+### Post-audit hardening — 2026-09-13
+
+- Independent review found no critical issue. Important integrity gaps were
+  closed: source bytes are verified before inference and before publish; child
+  schedules/proposal bounds are checked; device/stride/config and model asset
+  hashes are frozen at enqueue; max-frame, output quota and disk reserve are
+  enforced; private artifacts are retained with checksums; cancellation also
+  interrupts lease waiting; stable failure codes and persisted progress are
+  exposed.
+- Lost-response retries now reuse operation IDs. Run history and all suggestion
+  states survive reload with bounded cursor pagination. The UI initially shows
+  eight suggestions, offers **Tải thêm gợi ý**, collapses history, and future
+  runs suppress semantically identical proposals.
+- The final review pass also contains corrupt startup staging entries so manual
+  annotation still boots, verifies suggestion ownership before an idempotent
+  reject replay, guards late suggestion pages after filter/clip changes, loads
+  active runs independently from paginated history, and counts retained runs in
+  the assistance-wide artifact quota. Schema v4 persists the frozen stride so a
+  queued run remains reproducible after settings change or restart.
+- Final whole-backend regression after schema v4 and launcher lifecycle
+  hardening: **266 passed, 3 skipped** in 300.61 seconds, with only the two
+  existing TestClient dependency warnings. The final frontend suite passed
+  **16 files / 71 tests**; contract check, TypeScript and the production build
+  passed with the existing non-failing Vite config-loader warning.
+- Real Grounding DINO post-audit run
+  `bef29b4a-e526-4b3c-9f73-a914f6888ced` completed all **3/3** frames in range
+  4314–4324. UI progress visibly advanced while running. The persisted run has
+  non-null config/asset SHA-256 values and a bounded private checksum manifest
+  for request, result, progress and logs. Launcher preflight reports both DINO
+  and MediaPipe available; the app remains open at `127.0.0.1:18002`.

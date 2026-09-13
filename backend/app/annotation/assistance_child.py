@@ -58,7 +58,20 @@ def _iter_frames(request: AssistanceChildRequest):
     return iter_source_frames(request.source_path, _segment(request), _config(request))
 
 
-def run_child(request_path: Path, result_path: Path) -> int:
+def _write_progress(path: Path | None, processed_frames: int) -> None:
+    if path is None:
+        return
+    temporary = path.with_name(path.name + ".tmp")
+    temporary.write_text(
+        json.dumps({"schema_version": 1, "processed_frames": processed_frames}, separators=(",", ":")),
+        encoding="utf-8",
+    )
+    temporary.replace(path)
+
+
+def run_child(
+    request_path: Path, result_path: Path, progress_path: Path | None = None
+) -> int:
     request = AssistanceChildRequest.model_validate_json(request_path.read_bytes())
     detector = _load_detector(request)
     observations = []
@@ -68,6 +81,7 @@ def run_child(request_path: Path, result_path: Path) -> int:
             detected = detector.detect(frame)
             observations.append((frame.source_index, detected))
             observed_frames.append(frame.source_index)
+            _write_progress(progress_path, len(observed_frames))
     finally:
         detector.close()
     scheduled = list(range(request.start_frame, request.end_frame + 1, request.stride))
@@ -90,9 +104,10 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--request", type=Path, required=True)
     parser.add_argument("--result", type=Path, required=True)
+    parser.add_argument("--progress", type=Path)
     args = parser.parse_args()
     try:
-        return run_child(args.request, args.result)
+        return run_child(args.request, args.result, args.progress)
     except BaseException as exc:
         print(f"assistance_child_failed:{type(exc).__name__}", flush=True)
         return 2

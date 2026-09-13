@@ -82,7 +82,7 @@ def test_annotation_routes_validate_uuid_and_frame_range(tmp_path):
         assert client.get("/api/v2/annotations/clips/not-a-uuid").status_code == 422
         health = client.get("/api/v2/annotations/health").json()
         assert health["schema_version"] == 1
-        assert health["database_schema_version"] == 3
+        assert health["database_schema_version"] == 4
 
 
 def _open_action_workspace(client: TestClient, tmp_path, make_numbered_source) -> dict:

@@ -27,6 +27,7 @@ class ControlledAssistanceWorker:
         self.store = store
         self.started = False
         self.wakes = 0
+        self.available = True
 
     def reconcile_startup(self):
         self.store.reconcile_running()
@@ -45,7 +46,10 @@ class ControlledAssistanceWorker:
 
     def models(self):
         return [
-            AssistanceModelInfo(model="dino", available=True, device="cuda:0", error_code=None),
+            AssistanceModelInfo(
+                model="dino", available=self.available, device="cuda:0",
+                error_code=None if self.available else "asset_missing",
+            ),
             AssistanceModelInfo(model="mediapipe", available=False, device="cpu", error_code="asset_missing"),
         ]
 
@@ -158,3 +162,28 @@ def test_reject_suggestion_is_idempotent_and_does_not_create_action(
         assert first.status_code == 200 and second.json() == first.json()
         assert first.json()["review_state"] == "rejected"
         assert client.get(f"/api/v2/annotations/clips/{clip['id']}/actions").json() == before
+
+
+def test_create_run_replay_survives_temporary_model_unavailability(
+    tmp_path, make_numbered_source
+):
+    app = create_app(
+        settings=V1Settings(data_dir=tmp_path / "data"),
+        worker_factory=IdleTrackingWorker,
+        assistance_worker_factory=ControlledAssistanceWorker,
+    )
+    with TestClient(app) as client:
+        clip = _ready_clip(client, tmp_path, make_numbered_source)
+        body = {
+            "operation_id": str(uuid4()),
+            "expected_clip_revision": clip["revision"],
+            "model": "dino", "start_frame": 0, "end_frame": 7,
+        }
+        url = f"/api/v2/annotations/clips/{clip['id']}/assist-runs"
+        first = client.post(url, json=body)
+        app.state.assistance_worker.available = False
+        replay = client.post(url, json=body)
+
+        assert first.status_code == 202
+        assert replay.status_code == 202
+        assert replay.json()["id"] == first.json()["id"]

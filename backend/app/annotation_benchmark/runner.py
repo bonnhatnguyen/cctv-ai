@@ -16,6 +16,7 @@ from typing import IO, Iterator, Literal
 from uuid import UUID, uuid4
 
 from app.inference_lease import InferenceLease
+from app.owned_process import OwnedProcess
 
 from .contracts import FrozenManifest, ModelAsset, Proposal, RunConfig
 from .media import SourceDecodeError, SourceMediaChanged, iter_source_frames
@@ -364,138 +365,6 @@ def _perform_inference(
         detector.close()
 
 
-class _WindowsJob:
-    def __init__(self, process: subprocess.Popen[bytes]) -> None:
-        self._handle = None
-        if os.name != "nt":
-            return
-        import ctypes
-        from ctypes import wintypes
-
-        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-        kernel32.CreateJobObjectW.argtypes = [ctypes.c_void_p, wintypes.LPCWSTR]
-        kernel32.CreateJobObjectW.restype = wintypes.HANDLE
-        kernel32.SetInformationJobObject.argtypes = [
-            wintypes.HANDLE,
-            ctypes.c_int,
-            ctypes.c_void_p,
-            wintypes.DWORD,
-        ]
-        kernel32.SetInformationJobObject.restype = wintypes.BOOL
-        kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
-        kernel32.OpenProcess.restype = wintypes.HANDLE
-        kernel32.AssignProcessToJobObject.argtypes = [wintypes.HANDLE, wintypes.HANDLE]
-        kernel32.AssignProcessToJobObject.restype = wintypes.BOOL
-        kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
-        kernel32.CloseHandle.restype = wintypes.BOOL
-        handle = kernel32.CreateJobObjectW(None, None)
-        if not handle:
-            raise OSError(ctypes.get_last_error(), "CreateJobObjectW failed")
-
-        class IO_COUNTERS(ctypes.Structure):
-            _fields_ = [(name, ctypes.c_ulonglong) for name in (
-                "ReadOperationCount", "WriteOperationCount", "OtherOperationCount",
-                "ReadTransferCount", "WriteTransferCount", "OtherTransferCount",
-            )]
-
-        class BASIC_LIMIT(ctypes.Structure):
-            _fields_ = [
-                ("PerProcessUserTimeLimit", ctypes.c_longlong),
-                ("PerJobUserTimeLimit", ctypes.c_longlong),
-                ("LimitFlags", wintypes.DWORD),
-                ("MinimumWorkingSetSize", ctypes.c_size_t),
-                ("MaximumWorkingSetSize", ctypes.c_size_t),
-                ("ActiveProcessLimit", wintypes.DWORD),
-                ("Affinity", ctypes.c_size_t),
-                ("PriorityClass", wintypes.DWORD),
-                ("SchedulingClass", wintypes.DWORD),
-            ]
-
-        class EXTENDED_LIMIT(ctypes.Structure):
-            _fields_ = [
-                ("BasicLimitInformation", BASIC_LIMIT),
-                ("IoInfo", IO_COUNTERS),
-                ("ProcessMemoryLimit", ctypes.c_size_t),
-                ("JobMemoryLimit", ctypes.c_size_t),
-                ("PeakProcessMemoryUsed", ctypes.c_size_t),
-                ("PeakJobMemoryUsed", ctypes.c_size_t),
-            ]
-
-        info = EXTENDED_LIMIT()
-        info.BasicLimitInformation.LimitFlags = 0x00002000
-        if not kernel32.SetInformationJobObject(handle, 9, ctypes.byref(info), ctypes.sizeof(info)):
-            kernel32.CloseHandle(handle)
-            raise OSError(ctypes.get_last_error(), "SetInformationJobObject failed")
-        process_handle = kernel32.OpenProcess(0x0001 | 0x0100, False, process.pid)
-        if not process_handle:
-            kernel32.CloseHandle(handle)
-            raise OSError(ctypes.get_last_error(), "OpenProcess failed")
-        try:
-            if not kernel32.AssignProcessToJobObject(handle, process_handle):
-                raise OSError(ctypes.get_last_error(), "AssignProcessToJobObject failed")
-        finally:
-            kernel32.CloseHandle(process_handle)
-        self._handle = handle
-        self._kernel32 = kernel32
-
-    def close(self) -> None:
-        if self._handle is not None:
-            self._kernel32.CloseHandle(self._handle)
-            self._handle = None
-
-
-def _resume_windows_process(process_id: int) -> None:
-    if os.name != "nt":
-        return
-    import ctypes
-    from ctypes import wintypes
-
-    class THREADENTRY32(ctypes.Structure):
-        _fields_ = [
-            ("dwSize", wintypes.DWORD),
-            ("cntUsage", wintypes.DWORD),
-            ("th32ThreadID", wintypes.DWORD),
-            ("th32OwnerProcessID", wintypes.DWORD),
-            ("tpBasePri", wintypes.LONG),
-            ("tpDeltaPri", wintypes.LONG),
-            ("dwFlags", wintypes.DWORD),
-        ]
-
-    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-    kernel32.CreateToolhelp32Snapshot.argtypes = [wintypes.DWORD, wintypes.DWORD]
-    kernel32.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
-    kernel32.Thread32First.argtypes = [wintypes.HANDLE, ctypes.POINTER(THREADENTRY32)]
-    kernel32.Thread32First.restype = wintypes.BOOL
-    kernel32.Thread32Next.argtypes = [wintypes.HANDLE, ctypes.POINTER(THREADENTRY32)]
-    kernel32.Thread32Next.restype = wintypes.BOOL
-    kernel32.OpenThread.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
-    kernel32.OpenThread.restype = wintypes.HANDLE
-    kernel32.ResumeThread.argtypes = [wintypes.HANDLE]
-    kernel32.ResumeThread.restype = wintypes.DWORD
-    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
-    snapshot = kernel32.CreateToolhelp32Snapshot(0x00000004, 0)
-    if snapshot == wintypes.HANDLE(-1).value:
-        raise OSError(ctypes.get_last_error(), "thread snapshot failed")
-    resumed = False
-    entry = THREADENTRY32(dwSize=ctypes.sizeof(THREADENTRY32))
-    try:
-        available = bool(kernel32.Thread32First(snapshot, ctypes.byref(entry)))
-        while available:
-            if entry.th32OwnerProcessID == process_id:
-                thread = kernel32.OpenThread(0x0002, False, entry.th32ThreadID)
-                if thread:
-                    try:
-                        if kernel32.ResumeThread(thread) != 0xFFFFFFFF:
-                            resumed = True
-                    finally:
-                        kernel32.CloseHandle(thread)
-            available = bool(kernel32.Thread32Next(snapshot, ctypes.byref(entry)))
-    finally:
-        kernel32.CloseHandle(snapshot)
-    if not resumed:
-        raise OSError("could not resume owned benchmark worker")
-
-
 def _execute_worker(
     stage: Path,
     manifest: FrozenManifest,
@@ -527,27 +396,11 @@ def _execute_worker(
         HTTPS_PROXY="http://127.0.0.1:9",
         NO_PROXY="",
     )
-    flags = (
-        subprocess.CREATE_NEW_PROCESS_GROUP | 0x00000004 if os.name == "nt" else 0
-    )
     with (stage / "worker.stdout.log").open("wb") as stdout, (
         stage / "worker.stderr.log"
-    ).open("wb") as stderr:
-        process = subprocess.Popen(
-            command,
-            stdin=subprocess.DEVNULL,
-            stdout=stdout,
-            stderr=stderr,
-            env=environment,
-            creationflags=flags,
-        )
-        try:
-            job = _WindowsJob(process)
-            _resume_windows_process(process.pid)
-        except BaseException:
-            process.kill()
-            process.wait()
-            raise
+    ).open("wb") as stderr, OwnedProcess(
+        command, env=environment, stdout=stdout, stderr=stderr
+    ) as process:
         try:
             progress_path = stage / "progress.json"
             started = time.monotonic()
@@ -580,15 +433,9 @@ def _execute_worker(
                     pass
             return_code = process.returncode
         except BenchmarkRunError:
-            job.close()
-            process.wait(timeout=10)
             raise
         except KeyboardInterrupt:
-            job.close()
-            process.wait(timeout=10)
             raise
-        finally:
-            job.close()
     if return_code != 0:
         error_path = stage / "worker-error.json"
         if error_path.is_file():

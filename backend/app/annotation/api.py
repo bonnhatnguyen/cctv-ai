@@ -186,6 +186,9 @@ def create_router(
     )
     def create_assistance_run(clip_id: UUID, request: AssistanceRunCreate):
         try:
+            replay = assistance.replay_run(clip_id, request)
+            if replay is not None:
+                return replay
             models = {item.model: item for item in assistance_worker.models()}
             if request.model not in models or not models[request.model].available:
                 raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "assistance_model_unavailable")
@@ -198,9 +201,16 @@ def create_router(
             _raise_domain_error(exc)
 
     @router.get("/clips/{clip_id}/assist-runs", response_model=AssistanceRunListView)
-    def list_assistance_runs(clip_id: UUID, active_only: bool = False):
+    def list_assistance_runs(
+        clip_id: UUID,
+        active_only: bool = False,
+        limit: int = Query(50, ge=1, le=100),
+        cursor: str | None = None,
+    ):
         try:
-            return assistance.list_runs(clip_id, active_only=active_only)
+            return assistance.list_runs(
+                clip_id, active_only=active_only, limit=limit, cursor=cursor
+            )
         except Exception as exc:
             _raise_domain_error(exc)
 
@@ -223,11 +233,18 @@ def create_router(
         "/clips/{clip_id}/assist-suggestions",
         response_model=AssistanceSuggestionListView,
     )
-    def list_assistance_suggestions(clip_id: UUID, state: str = "pending"):
+    def list_assistance_suggestions(
+        clip_id: UUID,
+        state: str = "pending",
+        limit: int = Query(50, ge=1, le=100),
+        cursor: str | None = None,
+    ):
         try:
             if state not in {"pending", "accepted", "rejected", "stale"}:
                 raise ValueError("invalid suggestion state")
-            return assistance.list_suggestions(clip_id, state=state)
+            return assistance.list_suggestions(
+                clip_id, state=state, limit=limit, cursor=cursor
+            )
         except Exception as exc:
             _raise_domain_error(exc)
 

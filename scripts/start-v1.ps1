@@ -197,10 +197,13 @@ function Write-AssistanceAvailability {
     $available = @()
     if (Test-Path -LiteralPath $AssistancePython -PathType Leaf) {
         if (Test-Path -LiteralPath (Join-Path $AssistanceModelRoot "grounding-dino-tiny\asset.json") -PathType Leaf) {
-            $available += "dino"
+            $dinoDevice = if ([string]::IsNullOrWhiteSpace($env:V2_ANNOTATION_ASSISTANCE_DINO_DEVICE)) { "cuda:0" } else { $env:V2_ANNOTATION_ASSISTANCE_DINO_DEVICE }
+            & $AssistancePython -c "import sys,torch,transformers; sys.exit(3 if sys.argv[1] == 'cuda:0' and not torch.cuda.is_available() else 0)" $dinoDevice *> $null
+            if ($LASTEXITCODE -eq 0) { $available += "dino" }
         }
         if (Test-Path -LiteralPath (Join-Path $AssistanceModelRoot "mediapipe-hand-landmarker\asset.json") -PathType Leaf) {
-            $available += "mediapipe"
+            & $AssistancePython -c "import mediapipe" *> $null
+            if ($LASTEXITCODE -eq 0) { $available += "mediapipe" }
         }
     }
     if ($available.Count -gt 0) {
@@ -551,9 +554,11 @@ try {
     Write-LauncherLog "Python: $Python"
     Write-LauncherLog "pnpm: $Pnpm"
     Assert-Preflight $Python $Pnpm
-    Write-AssistanceAvailability
     Write-LauncherLog "V1 startup preflight passed."
-    if ($CheckOnly) { exit 0 }
+    if ($CheckOnly) {
+        Write-AssistanceAvailability
+        exit 0
+    }
 
     New-Item -ItemType Directory -Path $LauncherDirectory -Force | Out-Null
     $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
@@ -681,6 +686,7 @@ try {
         Write-LauncherLog "Started verified V1 frontend at $FrontendUrl (PID $($frontendProcess.Id))."
     }
 
+    Write-AssistanceAvailability
     if (-not $NoBrowser) { Start-Process $FrontendUrl | Out-Null }
     Write-LauncherLog "V1 is ready: $FrontendUrl"
     Write-LauncherLog "Logs: $LauncherDirectory"

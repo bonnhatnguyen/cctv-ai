@@ -67,7 +67,7 @@ def test_assisted_proposal_requires_human_save_and_separate_confirmation(
                 scheduled_frames=schedule,
                 observed_frames=schedule,
                 proposals=[Proposal(
-                    proposal_id=uuid4(), segment_id=uuid4(), local_track_id=1,
+                    proposal_id=uuid4(), segment_id=request.run_id, local_track_id=1,
                     label="hand_in", action_span=FrameSpan(start_frame=1, end_frame=5),
                     view_span=FrameSpan(start_frame=0, end_frame=6),
                     crossing_estimate=3,

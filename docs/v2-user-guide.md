@@ -64,11 +64,19 @@ Trong bước **Gán nhãn**, bảng **Model hỗ trợ** nằm trước form nh
    **Bỏ qua** nếu proposal sai.
 4. Gợi ý rỗng không có nghĩa video không có hành động. Vẫn xem phần ngoài các
    proposal và chỉ ghi background bằng coverage có xác nhận ở bước **Kiểm tra**.
+5. Dùng **Trạng thái gợi ý** để xem lại mục đang chờ, đã dùng, đã bỏ qua hoặc
+   đã lỗi thời. **Lịch sử model** giữ các lượt hoàn tất, thất bại và đã hủy sau
+   khi tải lại trang; lỗi mới nhất chỉ hiện cảnh báo khi đó là kết quả gần nhất.
+   Hàng đợi chỉ tải tám mục mỗi lần; bấm **Tải thêm gợi ý** để xem trang kế
+   tiếp. Lịch sử thu gọn mặc định để không làm rối form nhãn.
 
 Run và gợi ý được lưu trong database annotation, không sao chép video hay lưu
-thêm clip ngắn. Sau khi tải lại trang, run đang chờ/chạy và hàng đợi chưa review
-được phục hồi. Hủy run hoặc tắt app sẽ dừng cả cây process model/FFmpeg do app
-sở hữu; thiếu model không làm mất chế độ dán nhãn thủ công.
+thêm clip ngắn. Request/result/progress/log nhỏ được giữ trong private
+`annotations/assistance/runs/<run-id>` cùng checksum để audit; artifact từng run
+được chặn kích thước và toàn vùng assistance có quota/mức đĩa dự phòng. Sau khi tải lại trang, run đang chờ/chạy,
+lịch sử và hàng đợi review được phục hồi. Hủy run hoặc tắt app sẽ dừng cả cây
+process model/FFmpeg do app sở hữu; thiếu model không làm mất chế độ dán nhãn
+thủ công.
 
 Chọn một dòng trên timeline sẽ dừng video, tới đúng frame bắt đầu và mở event
 để sửa. Có thể xác nhận, xóa mềm và khôi phục. Nếu mất kết nối, thử lại bản

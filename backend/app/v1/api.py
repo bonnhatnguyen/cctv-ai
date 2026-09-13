@@ -141,8 +141,15 @@ def create_app(
             deadline_seconds=configured_annotation.preparation_deadline_seconds,
         )
     )
+    from app.annotation.assistance_worker import assistance_asset_hashes
+
     assistance_store = AssistanceRepository(
-        annotation_database, queue_limit=configured_annotation.assistance_queue_limit
+        annotation_database,
+        queue_limit=configured_annotation.assistance_queue_limit,
+        stride=configured_annotation.assistance_stride,
+        max_frames=configured_annotation.assistance_max_frames,
+        dino_device=configured_annotation.assistance_dino_device,
+        asset_hashes=assistance_asset_hashes(configured_annotation),
     )
     assistance_worker = (
         assistance_worker_factory(

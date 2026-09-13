@@ -150,10 +150,18 @@ export const startAssistanceRun = (
 );
 export const listAssistanceRuns = (
   clipId: string, activeOnly = false, signal?: AbortSignal,
-) => request<AssistanceRunListView>(
-  `${assistanceBase(clipId)}/assist-runs${activeOnly ? "?active_only=true" : ""}`,
-  { signal },
-);
+  cursor?: string | null, limit?: number,
+) => {
+  const query = [
+    limit == null ? null : `limit=${encodeURIComponent(limit)}`,
+    cursor ? `cursor=${encodeURIComponent(cursor)}` : null,
+    activeOnly ? "active_only=true" : null,
+  ].filter((value): value is string => value !== null);
+  return request<AssistanceRunListView>(
+    `${assistanceBase(clipId)}/assist-runs${query.length ? `?${query.join("&")}` : ""}`,
+    { signal },
+  );
+};
 export const getAssistanceRun = (
   clipId: string, runId: string, signal?: AbortSignal,
 ) => request<AssistanceRunView>(
@@ -166,9 +174,9 @@ export const cancelAssistanceRun = (
   jsonInit("POST", body, signal),
 );
 export const listAssistanceSuggestions = (
-  clipId: string, state = "pending", signal?: AbortSignal,
+  clipId: string, state = "pending", signal?: AbortSignal, cursor?: string | null,
 ) => request<AssistanceSuggestionListView>(
-  `${assistanceBase(clipId)}/assist-suggestions?state=${encodeURIComponent(state)}`,
+  `${assistanceBase(clipId)}/assist-suggestions?state=${encodeURIComponent(state)}&limit=8${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`,
   { signal },
 );
 export const rejectAssistanceSuggestion = (

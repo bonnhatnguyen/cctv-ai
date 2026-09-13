@@ -1035,6 +1035,19 @@ class AnnotationRepository:
                 "UPDATE annotation_clips SET revision=revision+1, source_state=?, updated_at=? WHERE id=?",
                 (source_state, now, str(clip_id)),
             )
+            if source_state != "available":
+                connection.execute(
+                    """UPDATE assistance_suggestions
+                       SET review_state='stale',updated_at=?
+                       WHERE clip_id=? AND review_state='pending'""",
+                    (now, str(clip_id)),
+                )
+                connection.execute(
+                    """UPDATE assistance_runs
+                       SET status='failed',error_code='source_changed',updated_at=?
+                       WHERE clip_id=? AND status IN ('queued','running')""",
+                    (now, str(clip_id)),
+                )
             result = self._clip_view(connection, self._require_clip(connection, clip_id))
             self._store_clip_revision(connection, result, now)
             return result

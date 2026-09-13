@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import BinaryIO
 
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 class SchemaVersionError(RuntimeError):
@@ -391,6 +391,21 @@ class AnnotationDatabase:
             (3, datetime.now(timezone.utc).isoformat()),
         )
 
+    def _migrate_v4(self, connection: sqlite3.Connection) -> None:
+        # Null is retained for v3 rows because their original sampling stride
+        # was not stored. Every v4 run freezes it at creation time.
+        connection.execute(
+            "ALTER TABLE assistance_runs ADD COLUMN stride INTEGER CHECK(stride >= 1)"
+        )
+        if self._before_version_write is not None:
+            self._before_version_write()
+        from datetime import datetime, timezone
+
+        connection.execute(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES(?, ?)",
+            (4, datetime.now(timezone.utc).isoformat()),
+        )
+
     def initialize(self) -> None:
         if self._initialized:
             return
@@ -418,6 +433,9 @@ class AnnotationDatabase:
                     if version == 2 and SCHEMA_VERSION >= 3:
                         self._migrate_v3(connection)
                         version = 3
+                    if version == 3 and SCHEMA_VERSION >= 4:
+                        self._migrate_v4(connection)
+                        version = 4
                     connection.commit()
                 except BaseException:
                     connection.rollback()

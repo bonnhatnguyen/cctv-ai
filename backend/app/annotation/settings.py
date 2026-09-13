@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -35,15 +36,17 @@ class AnnotationSettings(BaseSettings):
     assistance_enabled: bool = True
     assistance_python: Path | None = PROJECT_ROOT / ".venv-assist-benchmark" / "Scripts" / "python.exe"
     assistance_model_root: Path | None = PROJECT_ROOT / "data" / "v1" / "assisted-models"
-    assistance_deadline_seconds: float = 900
-    assistance_poll_seconds: float = 0.25
-    assistance_output_limit_bytes: int = 512 * 1024**2
-    assistance_max_frames: int = 1800
-    assistance_stride: int = 5
-    assistance_queue_limit: int = 4
-    assistance_dino_device: str = "cuda:0"
+    assistance_deadline_seconds: float = Field(default=900, gt=0)
+    assistance_poll_seconds: float = Field(default=0.25, gt=0)
+    assistance_output_limit_bytes: int = Field(default=512 * 1024**2, ge=64 * 1024)
+    assistance_max_frames: int = Field(default=1800, ge=1)
+    assistance_stride: int = Field(default=5, ge=1)
+    assistance_queue_limit: int = Field(default=4, ge=1)
+    assistance_dino_device: Literal["cpu", "cuda:0"] = "cuda:0"
 
-    model_config = SettingsConfigDict(env_prefix="V2_ANNOTATION_", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_prefix="V2_ANNOTATION_", extra="ignore", frozen=True
+    )
 
     @field_validator("root")
     @classmethod

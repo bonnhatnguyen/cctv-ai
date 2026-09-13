@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from uuid import uuid4
+import json
 
 from app.annotation.assistance_child import run_child
 from app.annotation.assistance_protocol import AssistanceChildRequest, AssistanceChildResult
@@ -24,6 +25,7 @@ def test_child_writes_a_complete_atomic_result(tmp_path: Path, monkeypatch):
     )
     request_path = tmp_path / "request.json"
     result_path = tmp_path / "result.json"
+    progress_path = tmp_path / "progress.json"
     request_path.write_text(request.model_dump_json(), encoding="utf-8")
 
     class Detector:
@@ -36,8 +38,10 @@ def test_child_writes_a_complete_atomic_result(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(child, "_load_detector", lambda request: Detector())
     monkeypatch.setattr(child, "_iter_frames", lambda request: frames)
 
-    assert run_child(request_path, result_path) == 0
+    assert run_child(request_path, result_path, progress_path) == 0
     result = AssistanceChildResult.model_validate_json(result_path.read_bytes())
     assert result.scheduled_frames == [0, 5, 10]
     assert result.observed_frames == [0, 5, 10]
+    assert json.loads(progress_path.read_text(encoding="utf-8"))["processed_frames"] == 3
     assert not (tmp_path / "result.json.tmp").exists()
+    assert not (tmp_path / "progress.json.tmp").exists()

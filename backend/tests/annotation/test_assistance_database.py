@@ -81,3 +81,32 @@ def test_failed_v3_upgrade_rolls_back_assistance_tables(tmp_path: Path, monkeypa
     assert version == 2
     assert "assistance_runs" not in tables
     assert "assistance_suggestions" not in tables
+
+
+def test_v4_upgrade_adds_frozen_stride_without_losing_v3_schema(
+    tmp_path: Path, monkeypatch
+):
+    root = tmp_path / "annotations"
+    source = tmp_path / "source"
+    monkeypatch.setattr(database_module, "SCHEMA_VERSION", 3)
+    database = AnnotationDatabase(root, source)
+    database.initialize()
+    database.close()
+    monkeypatch.setattr(database_module, "SCHEMA_VERSION", 4)
+
+    upgraded = AnnotationDatabase(root, source)
+    upgraded.initialize()
+    try:
+        with upgraded.read_connection() as connection:
+            version = connection.execute(
+                "SELECT MAX(version) FROM schema_migrations"
+            ).fetchone()[0]
+            columns = {
+                row[1] for row in connection.execute("PRAGMA table_info(assistance_runs)")
+            }
+    finally:
+        upgraded.close()
+
+    assert version == 4
+    assert "stride" in columns
+    assert (root / "annotations.db.backup-v3").is_file()

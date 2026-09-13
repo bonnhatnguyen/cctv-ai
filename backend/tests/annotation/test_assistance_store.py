@@ -5,9 +5,9 @@ from uuid import uuid4
 import pytest
 
 from app.annotation.assistance_store import AssistanceRepository, AssistanceStateConflict
-from app.annotation.contracts import AssistanceRunCreate, Point, RoiWrite
+from app.annotation.contracts import AssistanceRunCreate, Point, RoiWrite, SuggestionReject
 from app.annotation.contracts import ActionAnnotationCreate, InteractionCreate
-from app.annotation.repository import PayloadConflict
+from app.annotation.repository import NotFound, PayloadConflict
 
 
 @pytest.fixture
@@ -53,6 +53,72 @@ def test_create_run_is_idempotent_and_freezes_binding(store, ready_clip_with_roi
     assert first.roi_revision_id == ready_clip_with_roi.roi.id
     assert first.guideline_version == 1
     assert first.status == "queued"
+
+
+def test_create_run_freezes_device_sampling_and_asset_provenance(repo, ready_clip_with_roi):
+    configured = AssistanceRepository(
+        repo.database,
+        stride=2,
+        max_frames=10,
+        dino_device="cpu",
+        asset_hashes={"dino": "a" * 64},
+    )
+
+    run = configured.create_run(
+        ready_clip_with_roi.id, _request(ready_clip_with_roi.revision, end=2)
+    )
+
+    assert run.device == "cpu"
+    assert run.scheduled_frames == 2
+    assert run.config_sha256 is not None
+    assert run.asset_sha256 == "a" * 64
+    assert configured.run_stride(run.id) == 2
+
+    restarted_with_new_settings = AssistanceRepository(repo.database, stride=7)
+    assert restarted_with_new_settings.run_stride(run.id) == 2
+
+
+def test_create_run_rejects_ranges_above_the_scheduled_frame_cap(
+    repo, ready_clip_with_roi
+):
+    configured = AssistanceRepository(repo.database, stride=2, max_frames=1)
+
+    with pytest.raises(ValueError, match="scheduled frame limit"):
+        configured.create_run(
+            ready_clip_with_roi.id, _request(ready_clip_with_roi.revision, end=2)
+        )
+
+
+def test_progress_is_monotonic_and_bounded(store, ready_clip_with_roi):
+    run = store.create_run(
+        ready_clip_with_roi.id, _request(ready_clip_with_roi.revision)
+    )
+    store.mark_running(run.id, scheduled_frames=3)
+
+    assert store.update_progress(run.id, 2).processed_frames == 2
+    assert store.update_progress(run.id, 1).processed_frames == 2
+    with pytest.raises(ValueError, match="scheduled"):
+        store.update_progress(run.id, 4)
+
+
+def test_run_history_is_bounded_and_cursor_paginated(store, ready_clip_with_roi):
+    created = [
+        store.create_run(
+            ready_clip_with_roi.id,
+            _request(ready_clip_with_roi.revision, operation_id=uuid4()),
+        )
+        for _ in range(3)
+    ]
+
+    first = store.list_runs(ready_clip_with_roi.id, limit=2)
+    second = store.list_runs(
+        ready_clip_with_roi.id, limit=2, cursor=first.next_cursor
+    )
+
+    assert [item.id for item in first.items] == [created[2].id, created[1].id]
+    assert first.next_cursor is not None
+    assert [item.id for item in second.items] == [created[0].id]
+    assert second.next_cursor is None
 
 
 def test_reusing_operation_id_with_different_range_is_rejected(
@@ -118,6 +184,54 @@ def test_publish_requires_running_state_and_orders_suggestions(
     items = store.list_suggestions(ready_clip_with_roi.id).items
     assert [item.proposal_key for item in items] == ["earlier", "later"]
     assert items[1].label is None
+
+
+def test_publish_deduplicates_semantically_identical_suggestions(
+    store, ready_clip_with_roi
+):
+    run = store.create_run(
+        ready_clip_with_roi.id, _request(ready_clip_with_roi.revision)
+    )
+    store.mark_running(run.id, scheduled_frames=3)
+    proposal = {
+        "proposal_key": "first", "label": None,
+        "action_start_frame": None, "action_end_frame": None,
+        "view_start_frame": 0, "view_end_frame": 2,
+        "crossing_estimate": None, "crossing_bracket_start": None,
+        "crossing_bracket_end": None, "reason": "association", "evidence": {},
+    }
+    duplicate = {**proposal, "proposal_key": "second"}
+
+    store.publish(run.id, store.run_binding(run.id), [proposal, duplicate])
+
+    assert len(store.list_suggestions(ready_clip_with_roi.id).items) == 1
+
+
+def test_suggestion_queue_is_bounded_and_cursor_paginated(
+    store, ready_clip_with_roi
+):
+    run = store.create_run(
+        ready_clip_with_roi.id, _request(ready_clip_with_roi.revision)
+    )
+    store.mark_running(run.id, scheduled_frames=3)
+    proposals = [{
+        "proposal_key": f"p-{index}", "label": None,
+        "action_start_frame": None, "action_end_frame": None,
+        "view_start_frame": index, "view_end_frame": index,
+        "crossing_estimate": None, "crossing_bracket_start": None,
+        "crossing_bracket_end": None, "reason": "association", "evidence": {},
+    } for index in range(3)]
+    store.publish(run.id, store.run_binding(run.id), proposals)
+
+    first = store.list_suggestions(ready_clip_with_roi.id, limit=2)
+    second = store.list_suggestions(
+        ready_clip_with_roi.id, limit=2, cursor=first.next_cursor
+    )
+
+    assert [item.view_start_frame for item in first.items] == [0, 1]
+    assert first.next_cursor is not None
+    assert [item.view_start_frame for item in second.items] == [2]
+    assert second.next_cursor is None
 
 
 def test_annotation_only_revision_change_does_not_make_run_stale(
@@ -215,6 +329,19 @@ def test_failed_action_insert_leaves_suggestion_pending(
     assert store.get_suggestion(suggestion.id).review_state == "pending"
 
 
+def test_reject_replay_cannot_cross_clip_route(
+    store, ready_clip_with_roi
+):
+    suggestion = _pending_suggestion(store, ready_clip_with_roi)
+    request = SuggestionReject(
+        operation_id=uuid4(), expected_clip_revision=ready_clip_with_roi.revision,
+    )
+    store.reject_suggestion(ready_clip_with_roi.id, suggestion.id, request)
+
+    with pytest.raises(NotFound):
+        store.reject_suggestion(uuid4(), suggestion.id, request)
+
+
 def test_update_contract_does_not_accept_suggestion_id():
     from pydantic import ValidationError
     from app.annotation.contracts import ActionAnnotationUpdate
@@ -250,3 +377,19 @@ def test_changing_roi_stales_pending_suggestions_and_old_runs(
     invalidated = store.get_run(queued.id)
     assert invalidated.status == "failed"
     assert invalidated.error_code == "stale_binding"
+
+
+def test_source_hash_mismatch_stales_pending_suggestions_and_active_runs(
+    store, repo, ready_clip_with_roi
+):
+    suggestion = _pending_suggestion(store, ready_clip_with_roi)
+    queued = store.create_run(
+        ready_clip_with_roi.id, _request(ready_clip_with_roi.revision)
+    )
+
+    repo.mark_source_state(ready_clip_with_roi.id, "hash_mismatch")
+
+    assert store.get_suggestion(suggestion.id).review_state == "stale"
+    invalidated = store.get_run(queued.id)
+    assert invalidated.status == "failed"
+    assert invalidated.error_code == "source_changed"
