@@ -226,3 +226,27 @@ def test_update_contract_does_not_accept_suggestion_id():
             interaction_id=uuid4(), label="hand_in", start_frame=0,
             end_frame=2, crossing_frame=1, object_kind="unknown", visibility="clear",
         )
+
+
+def test_changing_roi_stales_pending_suggestions_and_old_runs(
+    store, repo, ready_clip_with_roi, setup
+):
+    suggestion = _pending_suggestion(store, ready_clip_with_roi)
+    queued = store.create_run(
+        ready_clip_with_roi.id, _request(ready_clip_with_roi.revision)
+    )
+
+    changed = repo.save_roi(
+        ready_clip_with_roi.id,
+        RoiWrite(
+            operation_id=uuid4(), expected_clip_revision=ready_clip_with_roi.revision,
+            camera_setup_id=setup.id,
+            polygon=[Point(x=.3, y=.3), Point(x=.7, y=.3), Point(x=.7, y=.7)],
+        ),
+    )
+
+    assert changed.roi.id != ready_clip_with_roi.roi.id
+    assert store.get_suggestion(suggestion.id).review_state == "stale"
+    invalidated = store.get_run(queued.id)
+    assert invalidated.status == "failed"
+    assert invalidated.error_code == "stale_binding"

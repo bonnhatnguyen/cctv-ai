@@ -94,6 +94,7 @@ export function AssistedReviewPanel({
   const selectedModel = models.find((item) => item.model === model);
   const invalidRange = startFrame < 0 || endFrame < startFrame || endFrame >= frameCount;
   const completedRuns = runs.filter((run) => run.status === "succeeded");
+  const latestFailed = runs.find((run) => run.status === "failed") ?? null;
 
   const start = async () => {
     if (busy || invalidRange || !selectedModel?.available) return;
@@ -153,6 +154,7 @@ export function AssistedReviewPanel({
     </div>
     {invalidRange && <p className="error" role="alert">Khoảng frame hỗ trợ không hợp lệ.</p>}
     {error && <p className="error" role="alert">{error}</p>}
+    {!error && latestFailed && <p className="error" role="alert">Model thất bại: {latestFailed.error_code ?? "model_process_failed"}. Bạn có thể chọn đoạn ngắn hơn hoặc thử model khác.</p>}
     {!loading && models.length > 0 && !models.some((item) => item.available) && <p>Chưa có model cục bộ sẵn sàng; dán nhãn thủ công vẫn dùng bình thường.</p>}
     <div className="suggestion-queue">
       <div className="suggestion-heading"><strong>Đoạn model đề xuất</strong><span>{suggestions.length} đang chờ xem</span></div>
@@ -162,7 +164,7 @@ export function AssistedReviewPanel({
         <div className="suggestion-actions"><button type="button" className="primary compact" disabled={busy} onClick={() => onUseSuggestion(item)}>Dùng làm nháp</button><button type="button" className="secondary compact" disabled={busy} onClick={() => void reject(item)}>Bỏ qua</button></div>
       </article>)}
       {!loading && suggestions.length === 0 && completedRuns.length > 0 && <p className="assist-empty"><strong>Model không tìm thấy gợi ý đang chờ.</strong> Kết quả này không phải “không có hành động”; bạn vẫn phải xem phần còn lại hoặc ghi coverage ở bước Kiểm tra.</p>}
-      {!loading && suggestions.length === 0 && completedRuns.length === 0 && !active && <p className="assist-empty">Chọn khoảng frame rồi chạy model để ưu tiên các đoạn quanh ROI.</p>}
+      {!loading && suggestions.length === 0 && completedRuns.length === 0 && !active && !latestFailed && <p className="assist-empty">Chọn khoảng frame rồi chạy model để ưu tiên các đoạn quanh ROI.</p>}
     </div>
   </section>;
 }

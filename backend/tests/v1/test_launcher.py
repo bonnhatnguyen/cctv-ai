@@ -6,6 +6,7 @@ import shutil
 import socket
 import subprocess
 import time
+import re
 from contextlib import closing
 from pathlib import Path
 
@@ -179,6 +180,10 @@ def test_launcher_preflight_resolves_project_runtime_and_dependencies(tmp_path):
     assert completed.returncode == 0, completed.stdout + completed.stderr
     assert str(ROOT / ".venv" / "Scripts" / "python.exe") in completed.stdout
     assert "V1 startup preflight passed" in completed.stdout
+    assert re.search(
+        r"Assisted labeling: (available \(.+\)|unavailable; manual labeling remains available)",
+        completed.stdout,
+    )
 
 
 def test_repeat_launch_reuses_only_owned_services_with_matching_proxy_target(tmp_path):

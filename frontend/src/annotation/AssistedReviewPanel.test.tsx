@@ -89,3 +89,15 @@ it("starts DINO on an explicit inclusive frame range", async () => {
     model: "dino", start_frame: 10, end_frame: 80,
   }));
 });
+
+it("shows the latest failed run instead of treating it as an empty result", async () => {
+  mocks.runs.mockResolvedValue({ items: [{
+    ...completedRun, status: "failed", error_code: "out_of_memory",
+  }], next_cursor: null });
+  mocks.suggestions.mockResolvedValue({ items: [], next_cursor: null });
+  render(<AssistedReviewPanel clipId="clip" clipRevision={4} frameCount={200}
+    currentFrame={10} onSeek={vi.fn()} onUseSuggestion={vi.fn()} onQueueChanged={vi.fn()} />);
+
+  expect(await screen.findByRole("alert")).toHaveTextContent(/Model thất bại.*out_of_memory/i);
+  expect(screen.queryByText(/Model không tìm thấy gợi ý/i)).not.toBeInTheDocument();
+});

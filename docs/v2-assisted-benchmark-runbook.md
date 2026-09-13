@@ -2,7 +2,9 @@
 
 This is a private command-line technical benchmark. It proposes review spans
 for `hand_in` and `hand_out`; it never writes action labels or coverage to the
-annotation database. There is no model button in the V2 UI in this stage.
+annotation database. V2 now also has a **Model hỗ trợ** panel, but that is a
+separate review queue rather than a benchmark artifact. Both paths reuse the
+same adapters and shared inference lease; neither path creates ground truth.
 
 ## 1. Prepare models once
 
@@ -94,13 +96,14 @@ Default output quota is 512 MiB and free-disk reserve is 2 GiB. Model/cache size
 is separate. Every scheduled frame has a JSONL row, including frames with zero
 detections; missing rows fail the run.
 
-## 5. Review proposals in the existing V2 workspace
+## 5. Review proposals
 
-`proposals.json` is a shortlist, not ground truth. Open the matching clip in V2,
-go to each proposal `view_span`, inspect exact frames and manually create or
-correct `hand_in`/`hand_out`. Also review footage outside proposal spans. Only
-the operator writes labels and explicit review coverage. Empty proposals never
-mean “no action”.
+`proposals.json` is a shortlist, not ground truth. For benchmark runs, open the
+matching clip and inspect each `view_span`. For ordinary labeling, create a run
+directly from **Model hỗ trợ**, then use or reject each persisted suggestion.
+In both cases inspect exact frames, correct `hand_in`/`hand_out`, and review
+footage outside proposal spans. Only the operator writes labels and explicit
+review coverage. Empty proposals never mean “no action”.
 
 Non-crossing reasons (`boundary`, `track_gap`, `association`, `clip_boundary`)
 are review-only and carry no predicted label. MediaPipe handedness is not a

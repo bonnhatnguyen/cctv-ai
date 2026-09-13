@@ -18,6 +18,8 @@ $ProjectRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
 $BackendDirectory = Join-Path $ProjectRoot "backend"
 $FrontendDirectory = Join-Path $ProjectRoot "frontend"
 $ModelPath = Join-Path $BackendDirectory "weights\yolo26n.pt"
+$AssistancePython = Join-Path $ProjectRoot ".venv-assist-benchmark\Scripts\python.exe"
+$AssistanceModelRoot = Join-Path $ProjectRoot "data\v1\assisted-models"
 if ([string]::IsNullOrWhiteSpace($DataDirectory)) {
     $DataDirectory = Join-Path $ProjectRoot "data\v1"
 }
@@ -189,6 +191,24 @@ function Assert-Preflight([string]$Python, [string]$Pnpm) {
     }
     & $Pnpm --dir $FrontendDirectory exec vite --version *> $null
     if ($LASTEXITCODE -ne 0) { throw "Vite could not be executed through $Pnpm." }
+}
+
+function Write-AssistanceAvailability {
+    $available = @()
+    if (Test-Path -LiteralPath $AssistancePython -PathType Leaf) {
+        if (Test-Path -LiteralPath (Join-Path $AssistanceModelRoot "grounding-dino-tiny\asset.json") -PathType Leaf) {
+            $available += "dino"
+        }
+        if (Test-Path -LiteralPath (Join-Path $AssistanceModelRoot "mediapipe-hand-landmarker\asset.json") -PathType Leaf) {
+            $available += "mediapipe"
+        }
+    }
+    if ($available.Count -gt 0) {
+        Write-LauncherLog "Assisted labeling: available ($($available -join ', '))"
+    }
+    else {
+        Write-LauncherLog "Assisted labeling: unavailable; manual labeling remains available"
+    }
 }
 
 function Wait-Until([scriptblock]$Condition, [string]$Description) {
@@ -531,6 +551,7 @@ try {
     Write-LauncherLog "Python: $Python"
     Write-LauncherLog "pnpm: $Pnpm"
     Assert-Preflight $Python $Pnpm
+    Write-AssistanceAvailability
     Write-LauncherLog "V1 startup preflight passed."
     if ($CheckOnly) { exit 0 }
 
@@ -580,6 +601,8 @@ try {
         $env:V1_TRACKING_MODEL_PATH = $ModelPath
         $env:V1_TRACKING_DATA_DIR = $DataDirectory
         $env:V1_TRACKING_INSTANCE_ID = $InstanceId
+        $env:V2_ANNOTATION_ASSISTANCE_PYTHON = $AssistancePython
+        $env:V2_ANNOTATION_ASSISTANCE_MODEL_ROOT = $AssistanceModelRoot
         $backendOut = Join-Path $LauncherDirectory "backend-$timestamp.log"
         $backendErr = Join-Path $LauncherDirectory "backend-$timestamp.error.log"
         $backendProcess = Start-Process -FilePath $Python `

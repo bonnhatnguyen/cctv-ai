@@ -2,7 +2,8 @@
 
 V2 chạy cục bộ trên máy. Giai đoạn 1 mở clip, xem đúng khung hình nguồn và
 khoanh/lưu vùng rổ tiền cố định. Giai đoạn 2 cho người vận hành tự gán và kiểm
-tra năm nhãn hành động; ứng dụng **chưa có model tự suy luận hành động**.
+tra năm nhãn hành động. Model cục bộ có thể đề xuất các đoạn cần xem quanh ROI,
+nhưng không tự lưu nhãn, xác nhận event hay tạo coverage.
 
 ## Mở clip
 
@@ -45,7 +46,29 @@ Sau khi ROI đã lưu, chọn bước **Gán nhãn**:
    tay, nhưng phải chọn lớp có thể xảy ra và lý do chưa rõ.
 4. Chọn vật và mức quan sát, rồi bấm **Lưu nhãn** hoặc `Ctrl+S`. `Escape` bỏ
    bản nháp. Các khoảng chồng nhau được giữ thành những event riêng, không tự
-   gộp.
+gộp.
+
+### Dùng Model hỗ trợ để bớt xem thủ công
+
+Trong bước **Gán nhãn**, bảng **Model hỗ trợ** nằm trước form nhãn:
+
+1. Chọn DINO hoặc MediaPipe đang sẵn sàng, nhập frame đầu/cuối (đều tính cả
+   hai đầu), rồi bấm **Chạy model**. DINO dùng CUDA theo cấu hình; MediaPipe
+   chạy CPU. V1 tracking, benchmark CLI và model hỗ trợ dùng chung một lượt
+   inference nên run có thể ở trạng thái **Đang chờ**.
+2. Khi hoàn tất, bấm **Đoạn x–y** để tới vùng cần xem. Nhãn và mốc qua biên có
+   badge **ước lượng**; `Chỉ cần xem` nghĩa là model chưa đủ bằng chứng để chọn
+   `hand_in` hay `hand_out`.
+3. Bấm **Dùng làm nháp**, chọn đúng lượt tay và sửa nhãn/I-C-O sau khi xem frame
+   chính xác. Chỉ khi bấm **Lưu nhãn** thì event draft mới được tạo. Hoặc bấm
+   **Bỏ qua** nếu proposal sai.
+4. Gợi ý rỗng không có nghĩa video không có hành động. Vẫn xem phần ngoài các
+   proposal và chỉ ghi background bằng coverage có xác nhận ở bước **Kiểm tra**.
+
+Run và gợi ý được lưu trong database annotation, không sao chép video hay lưu
+thêm clip ngắn. Sau khi tải lại trang, run đang chờ/chạy và hàng đợi chưa review
+được phục hồi. Hủy run hoặc tắt app sẽ dừng cả cây process model/FFmpeg do app
+sở hữu; thiếu model không làm mất chế độ dán nhãn thủ công.
 
 Chọn một dòng trên timeline sẽ dừng video, tới đúng frame bắt đầu và mở event
 để sửa. Có thể xác nhận, xóa mềm và khôi phục. Nếu mất kết nối, thử lại bản
@@ -120,11 +143,12 @@ dấu lỗi rõ ràng và cần retry; ứng dụng không dùng output dở dan
 **Số ID theo dõi cục bộ trong clip** là số ByteTrack ID phân biệt trong một
 lần chạy clip. Đây không phải số người duy nhất và không phải danh tính.
 
-## Gợi ý nhãn bằng model (CLI thử nghiệm)
+## Benchmark model bằng CLI
 
-Chặng A hiện có benchmark CLI riêng tư cho MediaPipe và Grounding DINO. Công cụ
-chỉ tạo danh sách vùng thời gian cần xem cho `hand_in`/`hand_out`; chưa có nút
-model trong UI và model không tự ghi nhãn, xác nhận hoặc coverage. Quy trình,
+Benchmark CLI riêng tư vẫn dùng để đo MediaPipe và Grounding DINO độc lập với
+UI. Công cụ tạo artifact bất biến để đánh giá; bảng **Model hỗ trợ** dùng cùng
+adapter để tạo hàng đợi review trong database. Cả hai đều không tự ghi nhãn,
+xác nhận hoặc coverage. Quy trình benchmark,
 đường dẫn output và cách phục hồi lỗi nằm trong
 `docs/v2-assisted-benchmark-runbook.md`.
 

@@ -5,6 +5,7 @@ import os
 import shutil
 import subprocess
 import threading
+import time
 from pathlib import Path
 from typing import Callable
 
@@ -14,6 +15,7 @@ from .contracts import AssistanceModelInfo, AssistanceRunCancel
 from .repository import AnnotationRepository
 from .settings import AnnotationSettings
 from app.inference_lease import InferenceLease
+from app.owned_process import OwnedProcess
 
 
 class AssistanceWorker:
@@ -36,6 +38,9 @@ class AssistanceWorker:
         self._stop = threading.Event()
         self._wake = threading.Event()
         self._thread: threading.Thread | None = None
+        self._current_lock = threading.Lock()
+        self._current_run_id = None
+        self._current_cancel: threading.Event | None = None
 
     def start(self) -> None:
         if self._thread is not None and self._thread.is_alive():
@@ -46,6 +51,9 @@ class AssistanceWorker:
 
     def stop(self) -> None:
         self._stop.set()
+        with self._current_lock:
+            if self._current_cancel is not None:
+                self._current_cancel.set()
         self._wake.set()
         if self._thread is not None:
             self._thread.join(timeout=max(15, self.settings.assistance_poll_seconds * 4))
@@ -58,6 +66,9 @@ class AssistanceWorker:
 
     def cancel(self, run_id, request: AssistanceRunCancel):
         result = self.store.request_cancel(run_id, request)
+        with self._current_lock:
+            if self._current_run_id == run_id and self._current_cancel is not None:
+                self._current_cancel.set()
         self._wake.set()
         return result
 
@@ -121,7 +132,9 @@ class AssistanceWorker:
             stride=self.settings.assistance_stride,
         )
 
-    def _execute(self, request: AssistanceChildRequest) -> AssistanceChildResult:
+    def _execute(
+        self, request: AssistanceChildRequest, cancel_requested: Callable[[], bool]
+    ) -> AssistanceChildResult:
         if self._execute_override is not None:
             return self._execute_override(request)
         python = self.settings.assistance_python
@@ -136,15 +149,28 @@ class AssistanceWorker:
         environment = os.environ.copy()
         environment["HF_HUB_OFFLINE"] = "1"
         environment["TRANSFORMERS_OFFLINE"] = "1"
+        command = [
+            str(python), "-m", "app.annotation.assistance_child",
+            "--request", str(request_path), "--result", str(result_path),
+        ]
         try:
-            completed = subprocess.run(
-                [str(python), "-m", "app.annotation.assistance_child",
-                 "--request", str(request_path), "--result", str(result_path)],
-                cwd=Path(__file__).resolve().parents[2],
-                env=environment, capture_output=True, timeout=self.settings.assistance_deadline_seconds,
-                check=False,
-            )
-            if completed.returncode != 0 or not result_path.is_file():
+            with (stage / "stdout.log").open("wb") as stdout, (
+                stage / "stderr.log"
+            ).open("wb") as stderr, OwnedProcess(
+                command, cwd=Path(__file__).resolve().parents[2], env=environment,
+                stdout=stdout, stderr=stderr,
+            ) as process:
+                deadline = time.monotonic() + self.settings.assistance_deadline_seconds
+                while process.poll() is None:
+                    if cancel_requested():
+                        raise RuntimeError("model process cancelled")
+                    if time.monotonic() >= deadline:
+                        raise RuntimeError("model process deadline exceeded")
+                    try:
+                        process.wait(timeout=0.1)
+                    except subprocess.TimeoutExpired:
+                        pass
+            if process.returncode != 0 or not result_path.is_file():
                 raise RuntimeError("model process failed")
             return AssistanceChildResult.model_validate_json(result_path.read_bytes())
         finally:
@@ -173,7 +199,18 @@ class AssistanceWorker:
             scheduled = list(range(run.start_frame, run.end_frame + 1, request.stride))
             with self._inference_lease.acquire(self._stop.is_set):
                 self.store.mark_running(run.id, scheduled_frames=len(scheduled))
-                result = self._execute(request)
+                cancellation = threading.Event()
+                with self._current_lock:
+                    self._current_run_id = run.id
+                    self._current_cancel = cancellation
+                try:
+                    result = self._execute(
+                        request, lambda: self._stop.is_set() or cancellation.is_set()
+                    )
+                finally:
+                    with self._current_lock:
+                        self._current_run_id = None
+                        self._current_cancel = None
             if result.run_id != run.id:
                 raise RuntimeError("model result belongs to another run")
             self.store.publish(

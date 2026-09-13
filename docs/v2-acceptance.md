@@ -276,3 +276,41 @@ The final repeated frontend suite exposed that ROI-conflict coverage frame marks
 were cleared in an effect one render after the warning. Keying the review panel
 to the reset revision now clears those marks in the same adopted-ROI render;
 the focused regression and the full 14-file / 57-test suite then passed.
+
+## Assisted review integration / UI software gate — 2026-09-13
+
+- V2 now persists assistance runs and proposal review state in annotation schema
+  v3. The API exposes model availability, create/list/get/cancel run operations,
+  pending suggestion listing and idempotent rejection without exposing source or
+  model filesystem paths.
+- DINO and MediaPipe execute in the isolated benchmark environment through an
+  owned process tree. V1 tracking, the benchmark CLI and UI assistance share one
+  user-local inference lease. Cancel, deadline and app shutdown close the owned
+  model/FFmpeg tree; interrupted running rows are reconciled explicitly.
+- The labeling workspace displays **Model hỗ trợ** before the manual editor.
+  Proposal ranges seek the existing clip player and enter estimated values into
+  the normal draft. A nullable proposal label cannot silently become `hand_in`;
+  the operator must select a label, interaction and valid exact frames. Saving
+  claims the suggestion atomically but creates only a draft event; confirmation
+  and coverage remain separate human actions.
+- Changing ROI marks pending suggestions `stale` and active runs
+  `failed/stale_binding`, so outputs bound to the previous polygon cannot be
+  accepted. Empty proposals retain the explicit unknown/coverage warning.
+- Full application backend regression passed: **250 passed, 3 skipped** in
+  250.36 seconds; the two installed TestClient deprecation warnings remain.
+  Frontend regression passed: **16 files / 64 tests**; contract drift,
+  TypeScript and production Vite build passed with the existing Vite native
+  config-loader warning.
+- Real launcher on the private M1 acceptance root started backend
+  `127.0.0.1:18001` and frontend `127.0.0.1:18002`, reporting both DINO and
+  MediaPipe available. In the in-app browser, the saved-ROI shop clip displayed
+  the assistance panel. A real Grounding DINO smoke run
+  `c6d0977b-634c-43f6-b072-fbb1c67ae79e` processed all **6/6** scheduled frames
+  in inclusive range 4314–4342 and completed `succeeded` with no proposals. The
+  UI truthfully warned that this does not prove the absence of an action; no
+  event or coverage was created by the smoke run.
+
+**SOFTWARE/UI/MODEL_SMOKE: PASS locally. QUALITY/EFFORT: PENDING_DATA.** The
+short smoke proves execution and truthful lifecycle only. It does not change
+the earlier need for confirmed `hand_in`/`hand_out` references, class-specific
+coverage and paired timed review before claiming quality or labeling-time ROI.

@@ -489,6 +489,16 @@ class AnnotationRepository:
                 "SELECT * FROM review_coverage WHERE id=?", (row["id"],)
             ).fetchone()
             cls._store_coverage_revision(connection, changed, "invalidate", now)
+        connection.execute(
+            """UPDATE assistance_suggestions SET review_state='stale',updated_at=?
+               WHERE clip_id=? AND review_state='pending'""",
+            (now, str(clip_id)),
+        )
+        connection.execute(
+            """UPDATE assistance_runs SET status='failed',error_code='stale_binding',updated_at=?
+               WHERE clip_id=? AND status IN ('queued','running')""",
+            (now, str(clip_id)),
+        )
 
     @staticmethod
     def _action_classes(label: str, uncertain_labels_json: str) -> set[str]:

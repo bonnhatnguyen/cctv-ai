@@ -241,6 +241,8 @@ class AssistanceRepository:
     def fail(self, run_id: UUID, error_code: str) -> AssistanceRunView:
         with self.database.write_transaction() as connection:
             run = self._require_run(connection, run_id)
+            if run["status"] == "failed":
+                return self._run_view(run)
             if run["status"] in {"succeeded", "cancelled"}:
                 raise AssistanceStateConflict("completed run cannot fail")
             connection.execute(
