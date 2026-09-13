@@ -8,6 +8,9 @@ import type { ActionWorkspaceView, ClipView } from "./types.generated";
 const mocks = vi.hoisted(() => ({
   get: vi.fn(), getClip: vi.fn(), create: vi.fn(), interaction: vi.fn(), update: vi.fn(),
   confirm: vi.fn(), remove: vi.fn(), restore: vi.fn(), coverage: vi.fn(), nextOperation: 0,
+  assistanceModels: vi.fn(), assistanceRuns: vi.fn(), assistanceRun: vi.fn(),
+  assistanceSuggestions: vi.fn(), assistanceStart: vi.fn(), assistanceCancel: vi.fn(),
+  assistanceReject: vi.fn(),
 }));
 vi.mock("./api", () => ({
   AnnotationApiError: class extends Error {
@@ -23,6 +26,13 @@ vi.mock("./api", () => ({
   confirmAction: mocks.confirm,
   deleteAction: mocks.remove,
   restoreAction: mocks.restore,
+  listAssistanceModels: mocks.assistanceModels,
+  listAssistanceRuns: mocks.assistanceRuns,
+  getAssistanceRun: mocks.assistanceRun,
+  listAssistanceSuggestions: mocks.assistanceSuggestions,
+  startAssistanceRun: mocks.assistanceStart,
+  cancelAssistanceRun: mocks.assistanceCancel,
+  rejectAssistanceSuggestion: mocks.assistanceReject,
 }));
 
 const clip: ClipView = {
@@ -49,6 +59,27 @@ beforeEach(() => {
   mocks.remove.mockReset();
   mocks.restore.mockReset();
   mocks.coverage.mockReset();
+  mocks.assistanceModels.mockReset().mockResolvedValue([
+    { model: "dino", available: true, device: "cuda:0", error_code: null },
+  ]);
+  mocks.assistanceRuns.mockReset().mockResolvedValue({ items: [{
+    id: "run", clip_id: "clip", model: "dino", status: "succeeded",
+    start_frame: 0, end_frame: 19, processed_frames: 4, scheduled_frames: 4,
+    error_code: null, source_sha256: "a".repeat(64), roi_revision_id: "roi",
+    guideline_version: 1, device: "cuda:0", config_sha256: null, asset_sha256: null,
+    created_at: "2026-09-13T00:00:00Z", updated_at: "2026-09-13T00:01:00Z",
+  }], next_cursor: null });
+  mocks.assistanceSuggestions.mockReset().mockResolvedValue({ items: [{
+    id: "suggestion", run_id: "run", clip_id: "clip", proposal_key: "p1",
+    label: "hand_in", action_start_frame: 5, action_end_frame: 9,
+    view_start_frame: 4, view_end_frame: 10, crossing_estimate: 7,
+    crossing_bracket_start: 6, crossing_bracket_end: 8, reason: "crossing",
+    review_state: "pending", accepted_annotation_id: null,
+  }], next_cursor: null });
+  mocks.assistanceRun.mockReset();
+  mocks.assistanceStart.mockReset();
+  mocks.assistanceCancel.mockReset();
+  mocks.assistanceReject.mockReset();
 });
 afterEach(cleanup);
 
@@ -67,6 +98,24 @@ it("saves hand_in from exact I/C/O shortcuts with a caller-owned operation id", 
       start_frame: 7, crossing_frame: 7, end_frame: 7,
     }),
   ));
+});
+
+it("reviews a model proposal through the normal draft save path", async () => {
+  const seek = vi.fn();
+  render(<ActionWorkspace clip={clip} index={7} onIndex={seek} frameReady
+    onClipRevision={vi.fn()} onClipReload={vi.fn()} onDirtyChange={vi.fn()} />);
+  await screen.findByText("Model hỗ trợ");
+  fireEvent.click(screen.getByRole("button", { name: "Dùng làm nháp" }));
+  expect(screen.getByText(/Mốc do model gợi ý/i)).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: /Lượt 1/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Lưu nhãn" }));
+
+  await waitFor(() => expect(mocks.create).toHaveBeenCalledWith("clip", expect.objectContaining({
+    suggestion_id: "suggestion", label: "hand_in", interaction_id: "interaction",
+    start_frame: 5, crossing_frame: 7, end_frame: 9,
+  })));
+  expect(mocks.confirm).not.toHaveBeenCalled();
+  expect(mocks.coverage).not.toHaveBeenCalled();
 });
 
 it("keeps the draft and reuses its operation id after a lost response", async () => {

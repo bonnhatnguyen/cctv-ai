@@ -5,10 +5,11 @@ import {
   restoreAction, updateAction,
 } from "./api";
 import { ActionEditor } from "./ActionEditor";
+import { AssistedReviewPanel } from "./AssistedReviewPanel";
 import { ActionTimeline } from "./ActionTimeline";
 import { ReviewPanel, type ReviewCoverageDraft } from "./ReviewPanel";
 import { emptyDraft, validateActionDraft, type ActionDraft } from "./actionRules";
-import type { ActionAnnotationCreate, ActionAnnotationUpdate, ActionAnnotationView, ActionWorkspaceView, ClipView } from "./types.generated";
+import type { ActionAnnotationCreate, ActionAnnotationUpdate, ActionAnnotationView, ActionWorkspaceView, AssistanceSuggestionView, ClipView } from "./types.generated";
 
 export function ActionWorkspace({ clip, index, onIndex, frameReady, reviewOnly = false, onClipRevision, onClipReload, onDirtyChange }: {
   clip: ClipView;
@@ -28,6 +29,7 @@ export function ActionWorkspace({ clip, index, onIndex, frameReady, reviewOnly =
   const [draftTouched, setDraftTouched] = useState(false);
   const [coverageDirty, setCoverageDirty] = useState(false);
   const [coverageFrameReset, setCoverageFrameReset] = useState(0);
+  const [assistanceRefresh, setAssistanceRefresh] = useState(0);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const operation = useRef<{ signature: string; id: string } | null>(null);
@@ -103,6 +105,29 @@ export function ActionWorkspace({ clip, index, onIndex, frameReady, reviewOnly =
     setDraftTouched(false);
     setError(null);
   };
+  const useSuggestion = (item: AssistanceSuggestionView) => {
+    if (saving) return;
+    if (draftTouched && !window.confirm("Nhãn chưa lưu sẽ bị bỏ. Dùng gợi ý model này?")) return;
+    onIndex(item.view_start_frame);
+    setEditingId(null);
+    setSelectedInteraction(null);
+    setDraft({
+      interaction_id: null,
+      label: item.label,
+      start_frame: item.action_start_frame ?? null,
+      end_frame: item.action_end_frame ?? null,
+      crossing_frame: item.crossing_estimate ?? null,
+      object_kind: "unknown",
+      visibility: "clear",
+      uncertain_labels: [],
+      unclear_reason: null,
+      suggestion_id: item.id,
+      estimated: true,
+    });
+    setDraftTouched(true);
+    setError(null);
+    operation.current = null;
+  };
   const reconcileConflict = async ({ roiMessage, staleMessage }: {
     roiMessage: string;
     staleMessage: string;
@@ -143,7 +168,7 @@ export function ActionWorkspace({ clip, index, onIndex, frameReady, reviewOnly =
     if (validation) { setError(validation); return; }
     const fields = {
       interaction_id: draftToSave.interaction_id,
-      label: draftToSave.label,
+      label: draftToSave.label!,
       start_frame: draftToSave.start_frame!,
       end_frame: draftToSave.end_frame!,
       crossing_frame: draftToSave.crossing_frame,
@@ -162,7 +187,7 @@ export function ActionWorkspace({ clip, index, onIndex, frameReady, reviewOnly =
       ...fields,
       operation_id: operation.current.id,
       expected_clip_revision: workspace.clip_revision,
-    } satisfies ActionAnnotationCreate;
+    };
     setSaving(true);
     setError(null);
     try {
@@ -170,8 +195,13 @@ export function ActionWorkspace({ clip, index, onIndex, frameReady, reviewOnly =
         ? await updateAction(clip.id, edited.id, {
           ...base, expected_annotation_revision: edited.revision,
         } satisfies ActionAnnotationUpdate)
-        : await createAction(clip.id, base);
-      if (accept(next) && operation.current?.signature === signature) cancel();
+        : await createAction(clip.id, {
+          ...base, suggestion_id: draftToSave.suggestion_id,
+        } satisfies ActionAnnotationCreate);
+      if (accept(next) && operation.current?.signature === signature) {
+        if (!edited && draftToSave.suggestion_id) setAssistanceRefresh((value) => value + 1);
+        cancel();
+      }
     } catch (reason) {
       if (reason instanceof AnnotationApiError && reason.status === 409) {
         if (reason.conflictingAnnotationId) {
@@ -207,6 +237,8 @@ export function ActionWorkspace({ clip, index, onIndex, frameReady, reviewOnly =
       visibility: annotation.visibility,
       uncertain_labels: annotation.uncertain_labels ?? [],
       unclear_reason: annotation.unclear_reason ?? null,
+      suggestion_id: null,
+      estimated: false,
     });
     setDraftTouched(false);
     operation.current = null;
@@ -291,6 +323,7 @@ export function ActionWorkspace({ clip, index, onIndex, frameReady, reviewOnly =
     <div className="action-content">
       {reviewOnly && <div className="review-summary"><h3>Kiểm tra event</h3><p>{workspace.annotations.filter((item) => !item.deleted && item.review_state !== "confirmed").length} event đang chờ xác nhận. Chưa review không được xem là không có hành động.</p></div>}
       {reviewOnly && <ReviewPanel key={coverageFrameReset} coverage={workspace.review_coverage} currentFrame={index} frameReady={frameReady} busy={saving} error={error} resetExactFrames={coverageFrameReset} onRecord={recordCoverage} onDirtyChange={setCoverageDirty} />}
+      {!reviewOnly && <AssistedReviewPanel key={`${clip.id}:${assistanceRefresh}`} clipId={clip.id} clipRevision={workspace.clip_revision} frameCount={clip.media!.frame_count} currentFrame={index} onSeek={onIndex} onUseSuggestion={useSuggestion} onQueueChanged={() => undefined} />}
       {!reviewOnly && <ActionEditor draft={draft} onChange={changeDraft} currentFrame={index} frameReady={frameReady} saving={saving} editing={Boolean(editingId)} error={error} onSave={(nextDraft) => void save(nextDraft)} onCancel={cancel} />}
       <ActionTimeline annotations={workspace.annotations} frameCount={clip.media!.frame_count} busy={saving} onSelect={select} onConfirm={(item) => void mutate("confirm", item)} onDelete={(item) => void mutate("delete", item)} onRestore={(item) => void mutate("restore", item)} />
     </div>

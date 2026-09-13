@@ -199,3 +199,19 @@ kbd { padding: 1px 5px; border: 1px solid currentColor; border-radius: 4px; font
   .timeline-row { grid-template-columns: 92px 1fr; }
   .timeline-actions, .review-state { grid-column: 2; }
 }
+.assisted-review { border: 1px solid #cbded5; border-radius: 14px; background: #f7faf8; padding: 1rem; display: grid; gap: .9rem; }
+.assisted-heading, .suggestion-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
+.assisted-heading h3 { margin: 0 0 .2rem; }
+.assisted-heading p, .assist-empty { margin: 0; color: #50665c; }
+.assist-status, .estimated-badge { border-radius: 999px; background: #dcefe5; color: #12613e; padding: .25rem .55rem; font-size: .78rem; white-space: nowrap; }
+.assist-controls { display: grid; grid-template-columns: minmax(130px, .8fr) repeat(2, minmax(150px, 1fr)) auto; gap: .65rem; align-items: end; }
+.assist-controls label { display: grid; gap: .3rem; font-size: .82rem; color: #50665c; }
+.assist-controls input, .assist-controls select { min-width: 0; }
+.suggestion-queue { display: grid; gap: .6rem; }
+.suggestion-card { display: grid; grid-template-columns: auto 1fr auto; gap: .75rem; align-items: center; padding: .75rem; border: 1px solid #d7e4de; border-radius: 12px; background: white; }
+.suggestion-range { border: 0; background: #edf5f1; color: #12613e; font-weight: 700; border-radius: 9px; padding: .6rem; }
+.suggestion-card > div:nth-child(2) { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; }
+.suggestion-card small { flex-basis: 100%; color: #66776f; }
+.suggestion-actions { display: flex; gap: .4rem; }
+.model-draft-note { margin: 0; padding: .7rem .8rem; border-left: 4px solid #269260; background: #edf7f1; color: #345b48; }
+@media (max-width: 850px) { .assist-controls { grid-template-columns: 1fr 1fr; } .suggestion-card { grid-template-columns: 1fr; } .suggestion-actions { justify-content: flex-start; } }

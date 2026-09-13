@@ -36,3 +36,20 @@ it("disables frame capture until the exact image is ready", () => {
   expect(screen.getByRole("button", { name: /Qua biên/ })).toBeDisabled();
   expect(screen.getByRole("button", { name: /Kết thúc/ })).toBeDisabled();
 });
+
+it("does not submit an unlabeled estimated suggestion", () => {
+  const save = vi.fn();
+  const draft = {
+    ...emptyDraft(), interaction_id: "interaction", label: null,
+    start_frame: 2, end_frame: 6, crossing_frame: 4,
+    suggestion_id: "suggestion", estimated: true,
+  } as ActionDraft;
+  render(<ActionEditor draft={draft} onChange={vi.fn()} currentFrame={4}
+    frameReady saving={false} editing={false} error={null}
+    onSave={save} onCancel={vi.fn()} />);
+
+  expect(screen.getByText(/Mốc do model gợi ý/i)).toBeVisible();
+  expect(screen.getByRole("button", { name: "Lưu nhãn" })).toBeDisabled();
+  fireEvent.keyDown(window, { key: "s", ctrlKey: true });
+  expect(save).not.toHaveBeenCalled();
+});

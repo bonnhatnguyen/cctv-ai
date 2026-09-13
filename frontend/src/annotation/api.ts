@@ -3,6 +3,13 @@ import type {
   ActionAnnotationUpdate,
   ActionMutation,
   ActionWorkspaceView,
+  AssistanceModelInfo,
+  AssistanceRunCancel,
+  AssistanceRunCreate,
+  AssistanceRunListView,
+  AssistanceRunView,
+  AssistanceSuggestionListView,
+  AssistanceSuggestionView,
   CameraSetupCreate,
   CameraSetupListView,
   CameraSetupView,
@@ -16,6 +23,7 @@ import type {
   RetryPreparation,
   RoiWrite,
   StorageView,
+  SuggestionReject,
   TemplateWrite,
 } from "./types.generated";
 
@@ -127,5 +135,46 @@ export const createReviewCoverage = (
   clipId: string, body: ReviewCoverageWrite, signal?: AbortSignal,
 ) => request<ActionWorkspaceView>(
   `/api/v2/annotations/clips/${encodeURIComponent(clipId)}/review-coverage`,
+  jsonInit("POST", body, signal),
+);
+
+const assistanceBase = (clipId: string) =>
+  `/api/v2/annotations/clips/${encodeURIComponent(clipId)}`;
+
+export const listAssistanceModels = (signal?: AbortSignal) =>
+  request<AssistanceModelInfo[]>("/api/v2/annotations/assist-models", { signal });
+export const startAssistanceRun = (
+  clipId: string, body: AssistanceRunCreate, signal?: AbortSignal,
+) => request<AssistanceRunView>(
+  `${assistanceBase(clipId)}/assist-runs`, jsonInit("POST", body, signal),
+);
+export const listAssistanceRuns = (
+  clipId: string, activeOnly = false, signal?: AbortSignal,
+) => request<AssistanceRunListView>(
+  `${assistanceBase(clipId)}/assist-runs${activeOnly ? "?active_only=true" : ""}`,
+  { signal },
+);
+export const getAssistanceRun = (
+  clipId: string, runId: string, signal?: AbortSignal,
+) => request<AssistanceRunView>(
+  `${assistanceBase(clipId)}/assist-runs/${encodeURIComponent(runId)}`, { signal },
+);
+export const cancelAssistanceRun = (
+  clipId: string, runId: string, body: AssistanceRunCancel, signal?: AbortSignal,
+) => request<AssistanceRunView>(
+  `${assistanceBase(clipId)}/assist-runs/${encodeURIComponent(runId)}/cancel`,
+  jsonInit("POST", body, signal),
+);
+export const listAssistanceSuggestions = (
+  clipId: string, state = "pending", signal?: AbortSignal,
+) => request<AssistanceSuggestionListView>(
+  `${assistanceBase(clipId)}/assist-suggestions?state=${encodeURIComponent(state)}`,
+  { signal },
+);
+export const rejectAssistanceSuggestion = (
+  clipId: string, suggestionId: string, body: SuggestionReject,
+  signal?: AbortSignal,
+) => request<AssistanceSuggestionView>(
+  `${assistanceBase(clipId)}/assist-suggestions/${encodeURIComponent(suggestionId)}/reject`,
   jsonInit("POST", body, signal),
 );

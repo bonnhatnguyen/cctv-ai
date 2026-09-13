@@ -6,7 +6,7 @@ export type UnclearReason = NonNullable<ActionAnnotationCreate["unclear_reason"]
 
 export interface ActionDraft {
   interaction_id: string | null;
-  label: ActionLabel;
+  label: ActionLabel | null;
   start_frame: number | null;
   end_frame: number | null;
   crossing_frame: number | null;
@@ -14,6 +14,8 @@ export interface ActionDraft {
   visibility: ActionAnnotationCreate["visibility"];
   uncertain_labels: ClearActionLabel[];
   unclear_reason: UnclearReason | null;
+  suggestion_id: string | null;
+  estimated: boolean;
 }
 
 export const ACTION_LABELS: ReadonlyArray<{ value: ActionLabel; text: string }> = [
@@ -34,9 +36,12 @@ export const emptyDraft = (): ActionDraft => ({
   visibility: "clear",
   uncertain_labels: [],
   unclear_reason: null,
+  suggestion_id: null,
+  estimated: false,
 });
 
 export function validateActionDraft(draft: ActionDraft): string | null {
+  if (draft.label === null) return "Cần chọn nhãn hành động.";
   if (draft.start_frame === null || draft.end_frame === null) {
     return "Cần chọn frame bắt đầu và kết thúc.";
   }
