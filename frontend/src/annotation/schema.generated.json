@@ -1,0 +1,1966 @@
+{
+  "$defs": {
+    "ActionAnnotationCreate": {
+      "additionalProperties": false,
+      "properties": {
+        "crossing_frame": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Crossing Frame"
+        },
+        "end_frame": {
+          "minimum": 0,
+          "title": "End Frame",
+          "type": "integer"
+        },
+        "expected_clip_revision": {
+          "minimum": 0,
+          "title": "Expected Clip Revision",
+          "type": "integer"
+        },
+        "interaction_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Interaction Id"
+        },
+        "label": {
+          "enum": [
+            "hand_in",
+            "hand_out",
+            "take_out",
+            "put_in",
+            "unclear"
+          ],
+          "title": "Label",
+          "type": "string"
+        },
+        "object_kind": {
+          "enum": [
+            "cash",
+            "other",
+            "unknown"
+          ],
+          "title": "Object Kind",
+          "type": "string"
+        },
+        "operation_id": {
+          "format": "uuid",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "start_frame": {
+          "minimum": 0,
+          "title": "Start Frame",
+          "type": "integer"
+        },
+        "suggestion_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Suggestion Id"
+        },
+        "uncertain_labels": {
+          "items": {
+            "enum": [
+              "hand_in",
+              "hand_out",
+              "take_out",
+              "put_in"
+            ],
+            "type": "string"
+          },
+          "maxItems": 4,
+          "title": "Uncertain Labels",
+          "type": "array"
+        },
+        "unclear_reason": {
+          "anyOf": [
+            {
+              "enum": [
+                "occlusion",
+                "boundary_ambiguous",
+                "clip_boundary",
+                "actor_ambiguous",
+                "object_ambiguous"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unclear Reason"
+        },
+        "visibility": {
+          "enum": [
+            "clear",
+            "occluded"
+          ],
+          "title": "Visibility",
+          "type": "string"
+        }
+      },
+      "required": [
+        "interaction_id",
+        "label",
+        "start_frame",
+        "end_frame",
+        "object_kind",
+        "visibility",
+        "operation_id",
+        "expected_clip_revision"
+      ],
+      "title": "ActionAnnotationCreate",
+      "type": "object"
+    },
+    "ActionAnnotationUpdate": {
+      "additionalProperties": false,
+      "properties": {
+        "crossing_frame": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Crossing Frame"
+        },
+        "end_frame": {
+          "minimum": 0,
+          "title": "End Frame",
+          "type": "integer"
+        },
+        "expected_annotation_revision": {
+          "minimum": 1,
+          "title": "Expected Annotation Revision",
+          "type": "integer"
+        },
+        "expected_clip_revision": {
+          "minimum": 0,
+          "title": "Expected Clip Revision",
+          "type": "integer"
+        },
+        "interaction_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Interaction Id"
+        },
+        "label": {
+          "enum": [
+            "hand_in",
+            "hand_out",
+            "take_out",
+            "put_in",
+            "unclear"
+          ],
+          "title": "Label",
+          "type": "string"
+        },
+        "object_kind": {
+          "enum": [
+            "cash",
+            "other",
+            "unknown"
+          ],
+          "title": "Object Kind",
+          "type": "string"
+        },
+        "operation_id": {
+          "format": "uuid",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "start_frame": {
+          "minimum": 0,
+          "title": "Start Frame",
+          "type": "integer"
+        },
+        "uncertain_labels": {
+          "items": {
+            "enum": [
+              "hand_in",
+              "hand_out",
+              "take_out",
+              "put_in"
+            ],
+            "type": "string"
+          },
+          "maxItems": 4,
+          "title": "Uncertain Labels",
+          "type": "array"
+        },
+        "unclear_reason": {
+          "anyOf": [
+            {
+              "enum": [
+                "occlusion",
+                "boundary_ambiguous",
+                "clip_boundary",
+                "actor_ambiguous",
+                "object_ambiguous"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unclear Reason"
+        },
+        "visibility": {
+          "enum": [
+            "clear",
+            "occluded"
+          ],
+          "title": "Visibility",
+          "type": "string"
+        }
+      },
+      "required": [
+        "interaction_id",
+        "label",
+        "start_frame",
+        "end_frame",
+        "object_kind",
+        "visibility",
+        "operation_id",
+        "expected_clip_revision",
+        "expected_annotation_revision"
+      ],
+      "title": "ActionAnnotationUpdate",
+      "type": "object"
+    },
+    "ActionAnnotationView": {
+      "additionalProperties": false,
+      "properties": {
+        "clip_id": {
+          "format": "uuid",
+          "title": "Clip Id",
+          "type": "string"
+        },
+        "crossing_frame": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Crossing Frame"
+        },
+        "deleted": {
+          "title": "Deleted",
+          "type": "boolean"
+        },
+        "end_frame": {
+          "minimum": 0,
+          "title": "End Frame",
+          "type": "integer"
+        },
+        "guideline_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Guideline Version",
+          "type": "integer"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "interaction_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Interaction Id"
+        },
+        "label": {
+          "enum": [
+            "hand_in",
+            "hand_out",
+            "take_out",
+            "put_in",
+            "unclear"
+          ],
+          "title": "Label",
+          "type": "string"
+        },
+        "object_kind": {
+          "enum": [
+            "cash",
+            "other",
+            "unknown"
+          ],
+          "title": "Object Kind",
+          "type": "string"
+        },
+        "review_state": {
+          "enum": [
+            "draft",
+            "confirmed",
+            "needs_review"
+          ],
+          "title": "Review State",
+          "type": "string"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "roi_revision_id": {
+          "format": "uuid",
+          "title": "Roi Revision Id",
+          "type": "string"
+        },
+        "start_frame": {
+          "minimum": 0,
+          "title": "Start Frame",
+          "type": "integer"
+        },
+        "uncertain_labels": {
+          "items": {
+            "enum": [
+              "hand_in",
+              "hand_out",
+              "take_out",
+              "put_in"
+            ],
+            "type": "string"
+          },
+          "maxItems": 4,
+          "title": "Uncertain Labels",
+          "type": "array"
+        },
+        "unclear_reason": {
+          "anyOf": [
+            {
+              "enum": [
+                "occlusion",
+                "boundary_ambiguous",
+                "clip_boundary",
+                "actor_ambiguous",
+                "object_ambiguous"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unclear Reason"
+        },
+        "visibility": {
+          "enum": [
+            "clear",
+            "occluded"
+          ],
+          "title": "Visibility",
+          "type": "string"
+        }
+      },
+      "required": [
+        "interaction_id",
+        "label",
+        "start_frame",
+        "end_frame",
+        "object_kind",
+        "visibility",
+        "id",
+        "clip_id",
+        "roi_revision_id",
+        "revision",
+        "review_state",
+        "deleted"
+      ],
+      "title": "ActionAnnotationView",
+      "type": "object"
+    },
+    "ActionMutation": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_annotation_revision": {
+          "minimum": 1,
+          "title": "Expected Annotation Revision",
+          "type": "integer"
+        },
+        "expected_clip_revision": {
+          "minimum": 0,
+          "title": "Expected Clip Revision",
+          "type": "integer"
+        },
+        "operation_id": {
+          "format": "uuid",
+          "title": "Operation Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id",
+        "expected_clip_revision",
+        "expected_annotation_revision"
+      ],
+      "title": "ActionMutation",
+      "type": "object"
+    },
+    "ActionWorkspaceView": {
+      "additionalProperties": false,
+      "properties": {
+        "annotations": {
+          "items": {
+            "$ref": "#/$defs/ActionAnnotationView"
+          },
+          "title": "Annotations",
+          "type": "array"
+        },
+        "clip_id": {
+          "format": "uuid",
+          "title": "Clip Id",
+          "type": "string"
+        },
+        "clip_revision": {
+          "minimum": 0,
+          "title": "Clip Revision",
+          "type": "integer"
+        },
+        "interactions": {
+          "items": {
+            "$ref": "#/$defs/InteractionView"
+          },
+          "title": "Interactions",
+          "type": "array"
+        },
+        "review_coverage": {
+          "items": {
+            "$ref": "#/$defs/ReviewCoverageView"
+          },
+          "title": "Review Coverage",
+          "type": "array"
+        },
+        "roi_revision_id": {
+          "format": "uuid",
+          "title": "Roi Revision Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "clip_id",
+        "clip_revision",
+        "roi_revision_id",
+        "interactions",
+        "annotations",
+        "review_coverage"
+      ],
+      "title": "ActionWorkspaceView",
+      "type": "object"
+    },
+    "AnnotationConflictDetail": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "const": "annotation_conflict",
+          "title": "Code",
+          "type": "string"
+        },
+        "conflicting_annotation_id": {
+          "format": "uuid",
+          "title": "Conflicting Annotation Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "conflicting_annotation_id"
+      ],
+      "title": "AnnotationConflictDetail",
+      "type": "object"
+    },
+    "AssistanceModelInfo": {
+      "additionalProperties": false,
+      "properties": {
+        "available": {
+          "title": "Available",
+          "type": "boolean"
+        },
+        "device": {
+          "enum": [
+            "cpu",
+            "cuda:0"
+          ],
+          "title": "Device",
+          "type": "string"
+        },
+        "error_code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Error Code"
+        },
+        "model": {
+          "enum": [
+            "dino",
+            "mediapipe"
+          ],
+          "title": "Model",
+          "type": "string"
+        }
+      },
+      "required": [
+        "model",
+        "available",
+        "device",
+        "error_code"
+      ],
+      "title": "AssistanceModelInfo",
+      "type": "object"
+    },
+    "AssistanceRunCancel": {
+      "additionalProperties": false,
+      "properties": {
+        "operation_id": {
+          "format": "uuid",
+          "title": "Operation Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id"
+      ],
+      "title": "AssistanceRunCancel",
+      "type": "object"
+    },
+    "AssistanceRunCreate": {
+      "additionalProperties": false,
+      "properties": {
+        "end_frame": {
+          "minimum": 0,
+          "title": "End Frame",
+          "type": "integer"
+        },
+        "expected_clip_revision": {
+          "minimum": 0,
+          "title": "Expected Clip Revision",
+          "type": "integer"
+        },
+        "model": {
+          "enum": [
+            "dino",
+            "mediapipe"
+          ],
+          "title": "Model",
+          "type": "string"
+        },
+        "operation_id": {
+          "format": "uuid",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "start_frame": {
+          "minimum": 0,
+          "title": "Start Frame",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "operation_id",
+        "expected_clip_revision",
+        "model",
+        "start_frame",
+        "end_frame"
+      ],
+      "title": "AssistanceRunCreate",
+      "type": "object"
+    },
+    "AssistanceRunListView": {
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/AssistanceRunView"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Next Cursor"
+        }
+      },
+      "required": [
+        "items",
+        "next_cursor"
+      ],
+      "title": "AssistanceRunListView",
+      "type": "object"
+    },
+    "AssistanceRunView": {
+      "additionalProperties": false,
+      "properties": {
+        "asset_sha256": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Asset Sha256"
+        },
+        "clip_id": {
+          "format": "uuid",
+          "title": "Clip Id",
+          "type": "string"
+        },
+        "config_sha256": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Config Sha256"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "device": {
+          "enum": [
+            "cpu",
+            "cuda:0"
+          ],
+          "title": "Device",
+          "type": "string"
+        },
+        "end_frame": {
+          "minimum": 0,
+          "title": "End Frame",
+          "type": "integer"
+        },
+        "error_code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Error Code"
+        },
+        "guideline_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Guideline Version",
+          "type": "integer"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "model": {
+          "enum": [
+            "dino",
+            "mediapipe"
+          ],
+          "title": "Model",
+          "type": "string"
+        },
+        "processed_frames": {
+          "minimum": 0,
+          "title": "Processed Frames",
+          "type": "integer"
+        },
+        "roi_revision_id": {
+          "format": "uuid",
+          "title": "Roi Revision Id",
+          "type": "string"
+        },
+        "scheduled_frames": {
+          "minimum": 0,
+          "title": "Scheduled Frames",
+          "type": "integer"
+        },
+        "source_sha256": {
+          "title": "Source Sha256",
+          "type": "string"
+        },
+        "start_frame": {
+          "minimum": 0,
+          "title": "Start Frame",
+          "type": "integer"
+        },
+        "status": {
+          "enum": [
+            "queued",
+            "running",
+            "succeeded",
+            "failed",
+            "cancelled"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "clip_id",
+        "model",
+        "status",
+        "start_frame",
+        "end_frame",
+        "processed_frames",
+        "scheduled_frames",
+        "error_code",
+        "source_sha256",
+        "roi_revision_id",
+        "device",
+        "config_sha256",
+        "asset_sha256",
+        "created_at",
+        "updated_at"
+      ],
+      "title": "AssistanceRunView",
+      "type": "object"
+    },
+    "AssistanceSuggestionListView": {
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/AssistanceSuggestionView"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Next Cursor"
+        }
+      },
+      "required": [
+        "items",
+        "next_cursor"
+      ],
+      "title": "AssistanceSuggestionListView",
+      "type": "object"
+    },
+    "AssistanceSuggestionView": {
+      "additionalProperties": false,
+      "properties": {
+        "accepted_annotation_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Accepted Annotation Id"
+        },
+        "action_end_frame": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Action End Frame"
+        },
+        "action_start_frame": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Action Start Frame"
+        },
+        "clip_id": {
+          "format": "uuid",
+          "title": "Clip Id",
+          "type": "string"
+        },
+        "crossing_bracket_end": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Crossing Bracket End"
+        },
+        "crossing_bracket_start": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Crossing Bracket Start"
+        },
+        "crossing_estimate": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Crossing Estimate"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "enum": [
+                "hand_in",
+                "hand_out"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Label"
+        },
+        "proposal_key": {
+          "title": "Proposal Key",
+          "type": "string"
+        },
+        "reason": {
+          "enum": [
+            "crossing",
+            "boundary",
+            "track_gap",
+            "association",
+            "clip_boundary"
+          ],
+          "title": "Reason",
+          "type": "string"
+        },
+        "review_state": {
+          "enum": [
+            "pending",
+            "accepted",
+            "rejected",
+            "stale"
+          ],
+          "title": "Review State",
+          "type": "string"
+        },
+        "run_id": {
+          "format": "uuid",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "view_end_frame": {
+          "minimum": 0,
+          "title": "View End Frame",
+          "type": "integer"
+        },
+        "view_start_frame": {
+          "minimum": 0,
+          "title": "View Start Frame",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "run_id",
+        "clip_id",
+        "proposal_key",
+        "label",
+        "view_start_frame",
+        "view_end_frame",
+        "reason",
+        "review_state",
+        "accepted_annotation_id"
+      ],
+      "title": "AssistanceSuggestionView",
+      "type": "object"
+    },
+    "CameraSetupCreate": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "operation_id": {
+          "format": "uuid",
+          "title": "Operation Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id",
+        "name"
+      ],
+      "title": "CameraSetupCreate",
+      "type": "object"
+    },
+    "CameraSetupListView": {
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/CameraSetupView"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Next Cursor"
+        }
+      },
+      "required": [
+        "items",
+        "next_cursor"
+      ],
+      "title": "CameraSetupListView",
+      "type": "object"
+    },
+    "CameraSetupView": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "revision": {
+          "minimum": 0,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "template": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RoiView"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "revision",
+        "template"
+      ],
+      "title": "CameraSetupView",
+      "type": "object"
+    },
+    "ClipListView": {
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/ClipView"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Next Cursor"
+        }
+      },
+      "required": [
+        "items",
+        "next_cursor"
+      ],
+      "title": "ClipListView",
+      "type": "object"
+    },
+    "ClipView": {
+      "additionalProperties": false,
+      "properties": {
+        "failure_code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Failure Code"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "media": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MediaView"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "original_name": {
+          "title": "Original Name",
+          "type": "string"
+        },
+        "preparation_state": {
+          "enum": [
+            "preparing",
+            "ready",
+            "failed",
+            "releasing",
+            "released"
+          ],
+          "title": "Preparation State",
+          "type": "string"
+        },
+        "prepared_bytes": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Prepared Bytes"
+        },
+        "preview_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Preview Url"
+        },
+        "revision": {
+          "minimum": 0,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "roi": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RoiView"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "source_job_id": {
+          "format": "uuid",
+          "title": "Source Job Id",
+          "type": "string"
+        },
+        "source_sha256": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Source Sha256"
+        },
+        "source_state": {
+          "enum": [
+            "available",
+            "missing",
+            "hash_mismatch"
+          ],
+          "title": "Source State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "source_job_id",
+        "original_name",
+        "revision",
+        "preparation_state",
+        "source_state",
+        "failure_code",
+        "source_sha256",
+        "media",
+        "roi",
+        "preview_url",
+        "prepared_bytes"
+      ],
+      "title": "ClipView",
+      "type": "object"
+    },
+    "ErrorView": {
+      "additionalProperties": false,
+      "properties": {
+        "detail": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/AnnotationConflictDetail"
+            }
+          ],
+          "title": "Detail"
+        }
+      },
+      "required": [
+        "detail"
+      ],
+      "title": "ErrorView",
+      "type": "object"
+    },
+    "InteractionCreate": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_clip_revision": {
+          "minimum": 0,
+          "title": "Expected Clip Revision",
+          "type": "integer"
+        },
+        "hand": {
+          "enum": [
+            "left",
+            "right",
+            "unknown"
+          ],
+          "title": "Hand",
+          "type": "string"
+        },
+        "local_track_id": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Local Track Id"
+        },
+        "operation_id": {
+          "format": "uuid",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "tracking_job_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tracking Job Id"
+        }
+      },
+      "required": [
+        "operation_id",
+        "expected_clip_revision",
+        "hand"
+      ],
+      "title": "InteractionCreate",
+      "type": "object"
+    },
+    "InteractionUpdate": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_clip_revision": {
+          "minimum": 0,
+          "title": "Expected Clip Revision",
+          "type": "integer"
+        },
+        "expected_interaction_revision": {
+          "minimum": 1,
+          "title": "Expected Interaction Revision",
+          "type": "integer"
+        },
+        "hand": {
+          "enum": [
+            "left",
+            "right",
+            "unknown"
+          ],
+          "title": "Hand",
+          "type": "string"
+        },
+        "local_track_id": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Local Track Id"
+        },
+        "operation_id": {
+          "format": "uuid",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "tracking_job_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tracking Job Id"
+        }
+      },
+      "required": [
+        "operation_id",
+        "expected_clip_revision",
+        "hand",
+        "expected_interaction_revision"
+      ],
+      "title": "InteractionUpdate",
+      "type": "object"
+    },
+    "InteractionView": {
+      "additionalProperties": false,
+      "properties": {
+        "clip_id": {
+          "format": "uuid",
+          "title": "Clip Id",
+          "type": "string"
+        },
+        "hand": {
+          "enum": [
+            "left",
+            "right",
+            "unknown"
+          ],
+          "title": "Hand",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "local_track_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Local Track Id"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "tracking_job_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Tracking Job Id"
+        }
+      },
+      "required": [
+        "id",
+        "clip_id",
+        "revision",
+        "hand",
+        "tracking_job_id",
+        "local_track_id"
+      ],
+      "title": "InteractionView",
+      "type": "object"
+    },
+    "MediaView": {
+      "additionalProperties": false,
+      "properties": {
+        "fps_den": {
+          "exclusiveMinimum": 0,
+          "title": "Fps Den",
+          "type": "integer"
+        },
+        "fps_num": {
+          "exclusiveMinimum": 0,
+          "title": "Fps Num",
+          "type": "integer"
+        },
+        "frame_count": {
+          "exclusiveMinimum": 0,
+          "title": "Frame Count",
+          "type": "integer"
+        },
+        "height": {
+          "exclusiveMinimum": 0,
+          "title": "Height",
+          "type": "integer"
+        },
+        "sample_aspect_ratio": {
+          "title": "Sample Aspect Ratio",
+          "type": "string"
+        },
+        "width": {
+          "exclusiveMinimum": 0,
+          "title": "Width",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "frame_count",
+        "fps_num",
+        "fps_den",
+        "width",
+        "height",
+        "sample_aspect_ratio"
+      ],
+      "title": "MediaView",
+      "type": "object"
+    },
+    "Point": {
+      "additionalProperties": false,
+      "properties": {
+        "x": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "X",
+          "type": "number"
+        },
+        "y": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Y",
+          "type": "number"
+        }
+      },
+      "required": [
+        "x",
+        "y"
+      ],
+      "title": "Point",
+      "type": "object"
+    },
+    "RegisterClip": {
+      "additionalProperties": false,
+      "properties": {
+        "operation_id": {
+          "format": "uuid",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "source_job_id": {
+          "format": "uuid",
+          "title": "Source Job Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id",
+        "source_job_id"
+      ],
+      "title": "RegisterClip",
+      "type": "object"
+    },
+    "ReleasePreparedMedia": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_clip_revision": {
+          "minimum": 0,
+          "title": "Expected Clip Revision",
+          "type": "integer"
+        },
+        "operation_id": {
+          "format": "uuid",
+          "title": "Operation Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id",
+        "expected_clip_revision"
+      ],
+      "title": "ReleasePreparedMedia",
+      "type": "object"
+    },
+    "RetryPreparation": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_clip_revision": {
+          "minimum": 0,
+          "title": "Expected Clip Revision",
+          "type": "integer"
+        },
+        "operation_id": {
+          "format": "uuid",
+          "title": "Operation Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id",
+        "expected_clip_revision"
+      ],
+      "title": "RetryPreparation",
+      "type": "object"
+    },
+    "ReviewCoverageView": {
+      "additionalProperties": false,
+      "properties": {
+        "active": {
+          "title": "Active",
+          "type": "boolean"
+        },
+        "clip_id": {
+          "format": "uuid",
+          "title": "Clip Id",
+          "type": "string"
+        },
+        "end_frame": {
+          "minimum": 0,
+          "title": "End Frame",
+          "type": "integer"
+        },
+        "guideline_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Guideline Version",
+          "type": "integer"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "reviewed_labels": {
+          "items": {
+            "enum": [
+              "hand_in",
+              "hand_out",
+              "take_out",
+              "put_in"
+            ],
+            "type": "string"
+          },
+          "title": "Reviewed Labels",
+          "type": "array"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "roi_revision_id": {
+          "format": "uuid",
+          "title": "Roi Revision Id",
+          "type": "string"
+        },
+        "start_frame": {
+          "minimum": 0,
+          "title": "Start Frame",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "clip_id",
+        "roi_revision_id",
+        "revision",
+        "start_frame",
+        "end_frame",
+        "reviewed_labels",
+        "active"
+      ],
+      "title": "ReviewCoverageView",
+      "type": "object"
+    },
+    "ReviewCoverageWrite": {
+      "additionalProperties": false,
+      "properties": {
+        "end_frame": {
+          "minimum": 0,
+          "title": "End Frame",
+          "type": "integer"
+        },
+        "expected_clip_revision": {
+          "minimum": 0,
+          "title": "Expected Clip Revision",
+          "type": "integer"
+        },
+        "operation_id": {
+          "format": "uuid",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "reviewed_labels": {
+          "items": {
+            "enum": [
+              "hand_in",
+              "hand_out",
+              "take_out",
+              "put_in"
+            ],
+            "type": "string"
+          },
+          "maxItems": 4,
+          "minItems": 1,
+          "title": "Reviewed Labels",
+          "type": "array"
+        },
+        "start_frame": {
+          "minimum": 0,
+          "title": "Start Frame",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "operation_id",
+        "expected_clip_revision",
+        "start_frame",
+        "end_frame",
+        "reviewed_labels"
+      ],
+      "title": "ReviewCoverageWrite",
+      "type": "object"
+    },
+    "RoiView": {
+      "additionalProperties": false,
+      "properties": {
+        "camera_setup_id": {
+          "format": "uuid",
+          "title": "Camera Setup Id",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "polygon": {
+          "items": {
+            "$ref": "#/$defs/Point"
+          },
+          "title": "Polygon",
+          "type": "array"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "template_revision_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Template Revision Id"
+        }
+      },
+      "required": [
+        "id",
+        "revision",
+        "camera_setup_id",
+        "polygon",
+        "template_revision_id"
+      ],
+      "title": "RoiView",
+      "type": "object"
+    },
+    "RoiWrite": {
+      "additionalProperties": false,
+      "properties": {
+        "camera_setup_id": {
+          "format": "uuid",
+          "title": "Camera Setup Id",
+          "type": "string"
+        },
+        "expected_clip_revision": {
+          "minimum": 0,
+          "title": "Expected Clip Revision",
+          "type": "integer"
+        },
+        "operation_id": {
+          "format": "uuid",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "polygon": {
+          "items": {
+            "$ref": "#/$defs/Point"
+          },
+          "maxItems": 64,
+          "minItems": 3,
+          "title": "Polygon",
+          "type": "array"
+        },
+        "template_revision_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Template Revision Id"
+        }
+      },
+      "required": [
+        "operation_id",
+        "expected_clip_revision",
+        "camera_setup_id",
+        "polygon"
+      ],
+      "title": "RoiWrite",
+      "type": "object"
+    },
+    "StorageView": {
+      "additionalProperties": false,
+      "properties": {
+        "free_bytes": {
+          "minimum": 0,
+          "title": "Free Bytes",
+          "type": "integer"
+        },
+        "limit_bytes": {
+          "minimum": 0,
+          "title": "Limit Bytes",
+          "type": "integer"
+        },
+        "used_bytes": {
+          "minimum": 0,
+          "title": "Used Bytes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "used_bytes",
+        "limit_bytes",
+        "free_bytes"
+      ],
+      "title": "StorageView",
+      "type": "object"
+    },
+    "SuggestionReject": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_clip_revision": {
+          "minimum": 0,
+          "title": "Expected Clip Revision",
+          "type": "integer"
+        },
+        "operation_id": {
+          "format": "uuid",
+          "title": "Operation Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id",
+        "expected_clip_revision"
+      ],
+      "title": "SuggestionReject",
+      "type": "object"
+    },
+    "TemplateWrite": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_setup_revision": {
+          "minimum": 0,
+          "title": "Expected Setup Revision",
+          "type": "integer"
+        },
+        "operation_id": {
+          "format": "uuid",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "polygon": {
+          "items": {
+            "$ref": "#/$defs/Point"
+          },
+          "maxItems": 64,
+          "minItems": 3,
+          "title": "Polygon",
+          "type": "array"
+        }
+      },
+      "required": [
+        "operation_id",
+        "expected_setup_revision",
+        "polygon"
+      ],
+      "title": "TemplateWrite",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "models": {
+    "ActionAnnotationCreate": {
+      "$ref": "#/$defs/ActionAnnotationCreate"
+    },
+    "ActionAnnotationUpdate": {
+      "$ref": "#/$defs/ActionAnnotationUpdate"
+    },
+    "ActionAnnotationView": {
+      "$ref": "#/$defs/ActionAnnotationView"
+    },
+    "ActionMutation": {
+      "$ref": "#/$defs/ActionMutation"
+    },
+    "ActionWorkspaceView": {
+      "$ref": "#/$defs/ActionWorkspaceView"
+    },
+    "AnnotationConflictDetail": {
+      "$ref": "#/$defs/AnnotationConflictDetail"
+    },
+    "AssistanceModelInfo": {
+      "$ref": "#/$defs/AssistanceModelInfo"
+    },
+    "AssistanceRunCancel": {
+      "$ref": "#/$defs/AssistanceRunCancel"
+    },
+    "AssistanceRunCreate": {
+      "$ref": "#/$defs/AssistanceRunCreate"
+    },
+    "AssistanceRunListView": {
+      "$ref": "#/$defs/AssistanceRunListView"
+    },
+    "AssistanceRunView": {
+      "$ref": "#/$defs/AssistanceRunView"
+    },
+    "AssistanceSuggestionListView": {
+      "$ref": "#/$defs/AssistanceSuggestionListView"
+    },
+    "AssistanceSuggestionView": {
+      "$ref": "#/$defs/AssistanceSuggestionView"
+    },
+    "CameraSetupCreate": {
+      "$ref": "#/$defs/CameraSetupCreate"
+    },
+    "CameraSetupListView": {
+      "$ref": "#/$defs/CameraSetupListView"
+    },
+    "CameraSetupView": {
+      "$ref": "#/$defs/CameraSetupView"
+    },
+    "ClipListView": {
+      "$ref": "#/$defs/ClipListView"
+    },
+    "ClipView": {
+      "$ref": "#/$defs/ClipView"
+    },
+    "ErrorView": {
+      "$ref": "#/$defs/ErrorView"
+    },
+    "InteractionCreate": {
+      "$ref": "#/$defs/InteractionCreate"
+    },
+    "InteractionUpdate": {
+      "$ref": "#/$defs/InteractionUpdate"
+    },
+    "InteractionView": {
+      "$ref": "#/$defs/InteractionView"
+    },
+    "MediaView": {
+      "$ref": "#/$defs/MediaView"
+    },
+    "Point": {
+      "$ref": "#/$defs/Point"
+    },
+    "RegisterClip": {
+      "$ref": "#/$defs/RegisterClip"
+    },
+    "ReleasePreparedMedia": {
+      "$ref": "#/$defs/ReleasePreparedMedia"
+    },
+    "RetryPreparation": {
+      "$ref": "#/$defs/RetryPreparation"
+    },
+    "ReviewCoverageView": {
+      "$ref": "#/$defs/ReviewCoverageView"
+    },
+    "ReviewCoverageWrite": {
+      "$ref": "#/$defs/ReviewCoverageWrite"
+    },
+    "RoiView": {
+      "$ref": "#/$defs/RoiView"
+    },
+    "RoiWrite": {
+      "$ref": "#/$defs/RoiWrite"
+    },
+    "StorageView": {
+      "$ref": "#/$defs/StorageView"
+    },
+    "SuggestionReject": {
+      "$ref": "#/$defs/SuggestionReject"
+    },
+    "TemplateWrite": {
+      "$ref": "#/$defs/TemplateWrite"
+    }
+  },
+  "schema_version": 1
+}

@@ -1,0 +1,8 @@
+{
+  "name": "transaction-review-ui",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": { "dev": "vite", "check:annotation-contracts": "node scripts/check-annotation-contracts.mjs", "build": "pnpm run check:annotation-contracts && tsc -b && vite build", "test": "vitest" },
+  "dependencies": { "@vitejs/plugin-react": "latest", "hls.js": "latest", "vite": "latest", "react": "latest", "react-dom": "latest" },
+  "devDependencies": { "@testing-library/jest-dom": "latest", "@testing-library/react": "latest", "@types/react": "latest", "@types/react-dom": "latest", "jsdom": "latest", "typescript": "latest", "vitest": "latest" }
+}
